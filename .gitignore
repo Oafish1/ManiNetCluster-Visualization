@@ -1,0 +1,6 @@
+# R
+*.RData
+.Rhistory
+
+# Data
+data/*
