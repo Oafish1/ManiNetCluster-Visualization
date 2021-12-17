@@ -32,7 +32,7 @@ ui <- fluidPage(
       p("Matrices should be of dimension (cells x features) in CSV format"),
     ),
     column(4,
-      selectInput("method", "Method", choices = c("Non-Linear Manifold Alignment", "CCA", "CTW")),
+      selectInput("method", "Method", choices = c("CCA", "CTW", "Linear Manifold Alignment", "Non-Linear Manifold Alignment")),
       sliderInput("d", "Dimensions", min = 1, max = 20, value = 3),
       sliderInput("knn", "Nearest Neighbors", min = 1, max = 20, value = 3), 
       sliderInput("kmed", "Medioids", min = 1, max = 20, value = 6),  
@@ -81,8 +81,11 @@ server <- function(input, output, session) {
     # Get vars
     method = switch(
       input$method,
+      # https://github.com/daifengwanglab/ManiNetCluster/blob/master/R/ManiNetCluster.R
       "Non-Linear Manifold Alignment"="nonlinear manifold aln",
       "CCA"="cca",
+      # KNN=1 on LMA provides error, investigate.  Potential k+1 missing?
+      "Linear Manifold Alignment"="linear manifold",
       # asdf: CTW requires more sliders (Z)
       "CTW"="ctw",
     )
@@ -94,8 +97,6 @@ server <- function(input, output, session) {
       corr=XY_corr,
       d=as.integer(input$d),
       method=method,
-      # TODO: Dropdown menu
-      # cca, lm
       k_NN=as.integer(input$knn),
       k_medoids=as.integer(input$kmed)
     )
