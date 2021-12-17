@@ -10,12 +10,12 @@ library("ManiNetCluster")
 # Load data
 load("bulk1.RData")
 load("bulk2.RData")
-mat1 = as.matrix(read.csv("mat1.csv", row.names=1))
-mat2 = as.matrix(read.csv("mat2.csv", row.names=1))
-knn_ini = as.matrix(read.csv("corr.csv", row.names=1))
-write.csv(mat1, "mat1_2.csv")
-write.csv(mat2, "mat2_2.csv")
-write.csv(knn_ini, "corr_2.csv")
+mat1 = as.matrix(read.csv("data/mat1.csv", row.names=1))
+mat2 = as.matrix(read.csv("data/mat2.csv", row.names=1))
+knn_ini = as.matrix(read.csv("data/corr.csv", row.names=1))
+write.csv(mat1, "data/mat1.csv")
+write.csv(mat2, "data/mat2.csv")
+write.csv(knn_ini, "data/corr.csv")
 
 # Use KNN as correspondence
 XY_corr=Correspondence(matrix=knn_ini)

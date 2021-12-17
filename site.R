@@ -25,14 +25,17 @@ ui <- fluidPage(
   # asdf: Label upload
   fluidRow(
     column(4,
-      fileInput("mat1", NULL, buttonLabel="Matrix 1", multiple=FALSE),
-      fileInput("mat2", NULL, buttonLabel="Matrix 2", multiple=FALSE),
+      fileInput("mat1", NULL, buttonLabel="First modality", multiple=FALSE),
+      fileInput("mat2", NULL, buttonLabel="Second modality", multiple=FALSE),
       fileInput("corr", NULL, buttonLabel="Correspondence", multiple=FALSE),
+      # asddf: With or without row/col labels?
+      p("Matrices should be of dimension (cells x features) in CSV format"),
     ),
     column(4,
-      sliderInput("d", "d", min = 1, max = 20, value = 3),
-      sliderInput("knn", "K_NN", min = 1, max = 20, value = 3), 
-      sliderInput("kmed", "K_MED", min = 1, max = 20, value = 6),  
+      selectInput("method", "Method", choices = c("Non-Linear Manifold Alignment", "CCA", "CTW")),
+      sliderInput("d", "Dimensions", min = 1, max = 20, value = 3),
+      sliderInput("knn", "Nearest Neighbors", min = 1, max = 20, value = 3), 
+      sliderInput("kmed", "Medioids", min = 1, max = 20, value = 6),  
     ),
     column(4,
       downloadButton("download", "Download"),
@@ -52,23 +55,37 @@ server <- function(input, output, session) {
     corr <- input$corr
     
     if (is.null(mat1) || is.null(mat2)) {
-      return(NULL)
-    }
-    
-    mat1 <- as.matrix(read.csv(mat1$datapath, row.names=1))
-    mat2 <- as.matrix(read.csv(mat2$datapath, row.names=1))
-    
-    # Use KNN as correspondence if applicable
-    if (!is.null(corr)) {
-      corr <- as.matrix(read.csv(corr$datapath, row.names=1))
-      XY_corr = Correspondence(matrix=corr)
-    }
-    else if (dim(mat1)[1] == dim(mat2)[1]) {
-      XY_corr = Correspondence(matrix=diag(dim(mat1)[1]))
+      # asddf: Add notation for default case
+      mat1 = as.matrix(read.csv("data/mat1.csv", row.names=1))
+      mat2 = as.matrix(read.csv("data/mat2.csv", row.names=1))
+      corr = as.matrix(read.csv("data/corr.csv", row.names=1))
     }
     else {
-      return(NULL)
+      mat1 <- as.matrix(read.csv(mat1$datapath, row.names=1))
+      mat2 <- as.matrix(read.csv(mat2$datapath, row.names=1))
+      
+      # Use KNN as correspondence if applicable
+      if (!is.null(corr)) {
+        corr <- as.matrix(read.csv(corr$datapath, row.names=1))
+      }
+      else if (dim(mat1)[1] == dim(mat2)[1]) {
+        corr = diag(dim(mat1)[1])
+      }
+      else {
+        # asddf: Add explanatory text here
+        return(NULL)
+      }
     }
+    XY_corr = Correspondence(matrix=corr)
+    
+    # Get vars
+    method = switch(
+      input$method,
+      "Non-Linear Manifold Alignment"="nonlinear manifold aln",
+      "CCA"="cca",
+      # asdf: CTW requires more sliders (Z)
+      "CTW"="ctw",
+    )
     
     # Run NLMA
     ManiNetCluster(
@@ -76,7 +93,7 @@ server <- function(input, output, session) {
       nameX='sample1',nameY='sample2',
       corr=XY_corr,
       d=as.integer(input$d),
-      method='nonlinear manifold aln',
+      method=method,
       # TODO: Dropdown menu
       # cca, lm
       k_NN=as.integer(input$knn),
@@ -85,6 +102,7 @@ server <- function(input, output, session) {
   })
   
   plot_alignment = function(sample_label, color_str) {
+    # Plot code from paper
     input$mat1
     df2 <- perform_alignment()
     df2$time = c(sel.meta1$time,sel.meta2$Days) #
