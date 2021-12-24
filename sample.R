@@ -10,12 +10,14 @@ library("ManiNetCluster")
 # Load data
 load("bulk1.RData")
 load("bulk2.RData")
-mat1 = as.matrix(read.csv("data/mat1.csv", row.names=1))
-mat2 = as.matrix(read.csv("data/mat2.csv", row.names=1))
-knn_ini = as.matrix(read.csv("data/corr.csv", row.names=1))
 write.csv(mat1, "data/mat1.csv")
 write.csv(mat2, "data/mat2.csv")
 write.csv(knn_ini, "data/corr.csv")
+write.csv(sel.meta1, "data/meta1.csv")
+write.csv(sel.meta2, "data/meta2.csv")
+mat1 = as.matrix(read.csv("data/mat1.csv", row.names=1))
+mat2 = as.matrix(read.csv("data/mat2.csv", row.names=1))
+knn_ini = as.matrix(read.csv("data/corr.csv", row.names=1))
 
 # Use KNN as correspondence
 XY_corr=Correspondence(matrix=knn_ini)
@@ -29,4 +31,3 @@ ManiNetCluster(
   k_NN=3L,
   k_medoids=6L
 )
-
