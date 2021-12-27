@@ -20,6 +20,9 @@ mat2 = as.matrix(read.csv("data/mat2.csv", row.names=1))
 knn_ini = as.matrix(read.csv("data/corr.csv", row.names=1))
 
 # Use KNN as correspondence
+dim(mat1)
+dim(mat2)
+cor(mat1, mat2)
 XY_corr=Correspondence(matrix=knn_ini)
 # Run NLMA
 ManiNetCluster(
