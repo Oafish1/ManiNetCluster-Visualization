@@ -3,6 +3,7 @@
 library(class)
 library(cluster)
 library(ManiNetCluster)
+library(pdist)
 library(plot3D)
 library(plyr)
 library(RColorBrewer)
@@ -36,64 +37,71 @@ ui <- fluidPage(
   h2("ManiNetCluster Webapp"),
   textOutput("warnings"),
   fluidRow(
-    column(6, plotOutput("content1")),
-    column(6, plotOutput("content2")),
+    column(10,
+    column(4, plotOutput("content1")),
+    column(4, plotOutput("content2")),
+    column(4, plotOutput("heatmap")),
+    ),
+    column(2, plotOutput("legend")),
   ),
   p(strong("Label Transfer Accuracy:"), textOutput("label_transfer_accuracy", inline=T)),
   hr(),
   
-  # Upload/Download UI
+  # UI
   fluidRow(
     column(3,
-           h2("Alignment"),
-           selectInput("method", "Method", choices=names(alignments), selected="Non-Linear Manifold Alignment"),
-           sliderInput("d", "Dimensions", min = 1, max = 20, value = 3),
-           sliderInput("knn", "Nearest Neighbors", min = 0, max = 20, value = 3), 
-           sliderInput("kmed", "Medoids", min = 0, max = 20, value = 6),
-           strong("Note:"),
-           p("To use medoids, nearest neighbors must be 0.")
+      h2("Upload"),
+      strong("Row and column labels are expected in all files.  All files are
+        also assumed to be ordered similarly (by cell)."),
+      br(), div(style = "margin-top: 30px"),
+      
+      # asddf: Replace div hack
+      fileInput("mat1", NULL, buttonLabel="First modality", multiple=FALSE),
+      div(style = "margin-top: -30px"),
+      fileInput("mat2", NULL, buttonLabel="Second modality", multiple=FALSE),
+      div(style = "margin-top: -30px"),
+      p("Modality data should be of dimension (cells x features) in CSV format."),
+      
+      br(),
+      fileInput("meta1", NULL, buttonLabel="First modality meta", multiple=FALSE),
+      div(style = "margin-top: -30px"),
+      fileInput("meta2", NULL, buttonLabel="Second modality meta", multiple=FALSE),
+      div(style = "margin-top: -30px"),
+      p("Meta data should be ordered similarly to modality data in CSV format.  A",
+       em("time"), "column is expected.  Optionally, a", em("label"), "column",
+       "may be included for additional error reporting."),
+      
+      br(),
+      fileInput("corr", NULL, buttonLabel="Correspondence", multiple=FALSE),
+      div(style = "margin-top: -30px"),
+      p("Correspondence matrix (cells1 x cells2) should be of CSV format. ",
+       "Meant to represent inter-dataset correspondence and can be calculated",
+       "in a variety of ways.  If aligned and no CSV is provided, will default",
+       "to the identity matrix."),
     ),
     column(3,
-           h2("Visualization"),
-           selectInput("cluster_method", "Method", choices = c("None", "K-Means", "PAM")),
-           sliderInput("num_clusters", "Clusters", min = 1, max = 7, value = 4),
+      h2("Alignment"),
+      selectInput("method", "Method", choices=names(alignments), selected="Non-Linear Manifold Alignment"),
+      sliderInput("d", "Dimensions", min = 1, max = 20, value = 3),
+      sliderInput("knn", "Nearest Neighbors", min = 0, max = 20, value = 3), 
+      sliderInput("kmed", "Medoids", min = 0, max = 20, value = 6),
+      strong("Note:"),
+      p("To use medoids, nearest neighbors must be 0.")
     ),
-    column(6,
-      column(6,
-        h2("Upload"),
-        strong("Row and column labels are expected in all files.  All files are
-                also assumed to be ordered similarly (by cell)."),
-        br(), div(style = "margin-top: 30px"),
-        
-        # asddf: Replace div hack
-        fileInput("mat1", NULL, buttonLabel="First modality", multiple=FALSE),
-        div(style = "margin-top: -30px"),
-        fileInput("mat2", NULL, buttonLabel="Second modality", multiple=FALSE),
-        div(style = "margin-top: -30px"),
-        p("Modality data should be of dimension (cells x features) in CSV format."),
-        
-        br(),
-        fileInput("meta1", NULL, buttonLabel="First modality meta", multiple=FALSE),
-        div(style = "margin-top: -30px"),
-        fileInput("meta2", NULL, buttonLabel="Second modality meta", multiple=FALSE),
-        div(style = "margin-top: -30px"),
-        p("Meta data should be ordered similarly to modality data in CSV format.  A",
-           em("time"), "column is expected.  Optionally, a", em("label"), "column",
-          "may be included for additional error reporting."),
-        
-        br(),
-        fileInput("corr", NULL, buttonLabel="Correspondence", multiple=FALSE),
-        div(style = "margin-top: -30px"),
-        p("Correspondence matrix (cells1 x cells2) should be of CSV format. ",
-          "Meant to represent inter-dataset correspondence and can be calculated",
-          "in a variety of ways.  If aligned and no CSV is provided, will default",
-          "to the identity matrix."),
-      ),
-      column(6,
-        h2("Download"),
-        downloadButton("download", "Download"),
-        br(), div(style = "margin-top: 30px"),
-      )
+    column(3,
+      h2("Clustering"),
+      selectInput("cluster_method", "Method", choices=c("None", "K-Means", "PAM"), selected="PAM"),
+      sliderInput("num_clusters", "Clusters", min = 1, max = 7, value = 4),
+      
+      h2("Gene Information"),
+      em("Placeholder:"),
+      tableOutput("gci"),
+    ),
+    column(3,
+      h2("Download"),
+      downloadButton("download", "Download"),
+      p("Download data as a single CSV with specified dimensionality, labeled by modality."),
+      br(), div(style = "margin-top: 30px"),
     ),
   ),
   
@@ -180,21 +188,25 @@ server <- function(input, output, session) {
   })
   
   # Generate clusters / Get colors
-  get_clusters <- function(df, default_color) {
+  get_clusters <- function(df, default_color="green") {
     working_data = df[,3:(2+input$d)]
     # Max 7 colors
     colors = c("blue","green","yellow","orange","red","pink","purple")
     
-    # asdf: Do clusters need to be same?  Even with non-aligned cells?
     if (input$cluster_method == "None")
-      return (colorRampPalette(brewer.pal(n=9, default_color))(12))
+      return (list("colors"=colorRampPalette(brewer.pal(n=9, default_color))(12)))
     else if (input$cluster_method == "K-Means")
       clusters = kmeans(working_data, input$num_clusters)$cluster
     else if (input$cluster_method == "PAM")
       clusters = pam(working_data, input$num_clusters)$clustering
+    else if (input$cluster_method == "Spectral") {
+      s1 <- as.matrix(data.frame(df[df$data=="sample1",])[,3:(2+input$d)])
+      s2 <- as.matrix(data.frame(df[df$data=="sample2",])[,3:(2+input$d)])
+      dist = as.matrix(pdist(s1, s2))
+    }
     else
       validate(need(F, "Invalid clustering method"))
-    return (colors[clusters])
+    return (list("clusters"=clusters, "colors"=colors[clusters]))
   }
     
   perform_alignment <- reactive({
@@ -239,7 +251,7 @@ server <- function(input, output, session) {
     )
   })
   
-  plot_alignment = function(sample_label, default_color) {
+  plot_alignment = function(sample_label, default_color, use_legend=F) {
     dimensions = refresh_dimensions()
     validate(need(dimensions >= 3, paste(
       "Must have dimensions \u22653 to plot, currently have", dimensions)))
@@ -263,17 +275,64 @@ server <- function(input, output, session) {
     df2$time = c(meta1$time,meta2$time)
     res = data.frame(df2[df2$data==sample_label,])
     res0 = data.frame(df2)
-    time.cols1 = get_clusters(res0, default_color)
+    time.cols1 = get_clusters(res0, default_color)$colors
+    if (input$cluster_method == "None")
+      par(mar=c(5.1,4.1,4.1,4.1), xpd=T)
     s3d<-scatter3D(x=res[,3],y=res[,4],z=res[,5],
-                   colvar=as.numeric(mapvalues(res$time,names(table(res$time)),c(2:13))),
+                   # colvar=as.numeric(mapvalues(res$time,names(table(res$time)),c(2:13))),
+                   colvar=as.numeric(res$time),
                    col = c(time.cols1),pch=c(16,17)[as.numeric(as.factor(res$data))],
                    colkey=F, theta = 300, phi = 30,cex=2,
                    xlim=c(min(res0$Val0),max(res0$Val0)),
                    ylim=c(min(res0$Val1),max(res0$Val1)),
                    zlim=c(min(res0$Val2),max(res0$Val2)))
     
+    if (input$cluster_method == "None")
+      legend("right", legend = levels(as.factor(res$time)), col = c(time.cols1), pch=16, inset = c(-.1,0), horiz = F,cex=1)
     #legend("top", legend = levels(as.factor(res$data)), pch = c(16, 17),inset = -0.1, xpd = TRUE, horiz = TRUE)
-    #legend("right", legend = levels(as.factor(res$time)), col = c(time.cols1),pch=16,inset = 0.1, xpd = TRUE, horiz = F,cex=2)
+  }
+  
+  plot_legend <- function() {
+    res0 <- data.frame(perform_alignment())
+    
+    # https://stackoverflow.com/a/48966924
+    plot(NULL, xaxt='n', yaxt='n', bty='n', ylab='', xlab='', xlim=0:1, ylim=0:1)
+    
+    if (input$cluster_method != "None") {
+      clusters = get_clusters(res0)
+      clusters$colors = clusters$colors[sort(clusters$clusters, index.return=T)$ix]
+      clusters$clusters = clusters$clusters[sort(clusters$clusters, index.return=T)$ix]
+      legend("center", legend = paste("c", unique(clusters$clusters), sep=""), col = unique(clusters$colors), pch=16, inset = c(0,0), xpd = TRUE, horiz = F,cex=2)
+    }
+  }
+  
+  plot_heatmap <- function() {
+    if (input$cluster_method == "None") {
+      plot(NULL, xaxt='n', yaxt='n', bty='n', ylab='', xlab='', xlim=0:1, ylim=0:1)
+      return (NULL)
+    }
+    
+    aligned <- perform_alignment()
+    clusters <- get_clusters(aligned)
+    
+    aligned = aligned[sort(clusters$clusters, index.return=T)$ix,]
+    clusters$colors = clusters$colors[sort(clusters$clusters, index.return=T)$ix]
+    clusters$clusters = clusters$clusters[sort(clusters$clusters, index.return=T)$ix]
+    clusters = clusters[sort(clusters$clusters, index.return=T)$ix]
+    
+    s1 <- as.matrix(data.frame(aligned[aligned$data=="sample1",])[,3:(2+input$d)])
+    s2 <- as.matrix(data.frame(aligned[aligned$data=="sample2",])[,3:(2+input$d)])
+    rsc = clusters$colors[aligned$data=="sample1"]
+    csc = clusters$colors[aligned$data=="sample2"]
+    
+    s1 = s1[nrow(s1):1,]
+    rsc = rsc[length(rsc):1]
+    
+    dist = as.matrix(pdist(s1, s2))
+    
+    par(mar=c(5.1,4.1,4.1,4.1), xpd=T)
+    heatmap(dist, RowSideColors=rsc, ColSideColors=csc, Colv=NA, Rowv=NA, labCol=F, labRow=F, col=colorRampPalette(brewer.pal(8, "Oranges"))(256))
+    legend(x="topright", legend=c("close", "mid", "far"), inset = c(-.1,0), fill=colorRampPalette(brewer.pal(8, "Oranges"))(3))
   }
   
   # Accuracy metrics
@@ -304,7 +363,6 @@ server <- function(input, output, session) {
     
     predictions = knn(source_data, transfer_data, cl=source_labels, k=5)
     correct = sum(predictions == transfer_labels)
-    print(transfer_labels)
     
     return (correct / length(transfer_labels))
   })
@@ -312,6 +370,9 @@ server <- function(input, output, session) {
   # Outputs
   output$content1 <- renderPlot({plot_alignment('sample1', 'Greens')})
   output$content2 <- renderPlot({plot_alignment('sample2', 'Oranges')})
+  output$legend <- renderPlot({plot_legend()})
+  output$heatmap <- renderPlot({plot_heatmap()})
+  output$gci <- renderTable(data.frame(Gene=c(0,1,2), Contribution=c(0,1,0)))
   
   output$download <- downloadHandler(
     "aligned.csv",
@@ -324,3 +385,4 @@ server <- function(input, output, session) {
 
 # Run
 shinyApp(ui=ui, server=server)
+

@@ -10,11 +10,16 @@ library("ManiNetCluster")
 # Load data
 load("bulk1.RData")
 load("bulk2.RData")
+load("sc2sc.small.RData")
+
 write.csv(mat1, "data/mat1.csv")
 write.csv(mat2, "data/mat2.csv")
 write.csv(knn_ini, "data/corr.csv")
 write.csv(sel.meta1, "data/meta1.csv")
 write.csv(sel.meta2, "data/meta2.csv")
+write.csv(ps.meta1, "data/meta1.csv")
+write.csv(ps.meta2, "data/meta2.csv")
+
 mat1 = as.matrix(read.csv("data/mat1.csv", row.names=1))
 mat2 = as.matrix(read.csv("data/mat2.csv", row.names=1))
 knn_ini = as.matrix(read.csv("data/corr.csv", row.names=1))
@@ -25,7 +30,7 @@ dim(mat2)
 cor(mat1, mat2)
 XY_corr=Correspondence(matrix=knn_ini)
 # Run NLMA
-ManiNetCluster(
+df2 = ManiNetCluster(
   mat1,mat2,
   nameX='sample1',nameY='sample2',
   corr=XY_corr,
