@@ -10,6 +10,7 @@ library("ManiNetCluster")
 # Load data
 load("bulk1.RData")
 load("bulk2.RData")
+
 load("sc2sc.small.RData")
 
 write.csv(mat1, "data/mat1.csv")
@@ -17,6 +18,7 @@ write.csv(mat2, "data/mat2.csv")
 write.csv(knn_ini, "data/corr.csv")
 write.csv(sel.meta1, "data/meta1.csv")
 write.csv(sel.meta2, "data/meta2.csv")
+
 write.csv(ps.meta1, "data/meta1.csv")
 write.csv(ps.meta2, "data/meta2.csv")
 
