@@ -41,12 +41,11 @@ ui <- fluidPage(
     column(4, plotOutput("content2")),
     column(4, plotOutput("heatmap")),
   ),
-  p(strong("Label Transfer Accuracy:"), textOutput("label_transfer_accuracy", inline=T)),
   hr(),
   
   # UI
   fluidRow(
-    column(4,
+    column(5,
       h2("Upload"),
       strong("Row and column labels are expected in all files.  All files are
         also assumed to be ordered similarly (by sample)."),
@@ -61,7 +60,10 @@ ui <- fluidPage(
           fileInput("mat2", NULL, buttonLabel="Second Dataset")
         ),
       )),
-      p("Data should be of dimension (samples x features) in CSV format."),
+      fluidRow(
+        column(8, p("Data should be of dimension (samples x features) in CSV format.")),
+        column(4, img(src='data.png', align = "left", width=80)),
+      ),
       
       br(),
       div(style="display:inline-block;margin-bottom:-30px",
@@ -73,17 +75,24 @@ ui <- fluidPage(
             fileInput("meta2", NULL, buttonLabel="Second Metadata"),
           ),
       )),
-      p("Metadata should be ordered similarly to dataset data in CSV format.  A",
-       em("time"), "column is expected.  Optionally, a", em("label"), "column",
-       "may be included for additional error reporting."),
+      fluidRow(
+        column(8, p("Metadata should be ordered similarly to dataset data in CSV format.  A",
+         em("time"), "column is expected.  All other columns are assumed to be categorical",
+         "and are used for error reporting.")),
+        column(4, img(src='metadata.png', align = "left", width=80)),
+      ),
       
       br(),
       fileInput("corr", NULL, buttonLabel="Correspondence", multiple=FALSE),
       div(style = "margin-top: -30px"),
-      p("Correspondence matrix (samples11 x samples2) should be of CSV format. ",
-       "Meant to represent inter-dataset correspondence and can be calculated",
-       "in a variety of ways.  If aligned and no CSV is provided, will default",
-       "to the identity matrix."),
+      fluidRow(
+        column(8,
+        p("Correspondence matrix (samples1 x samples2) should be of CSV format. ",
+          "Meant to represent inter-dataset correspondence and can be calculated",
+          "in a variety of ways.  If aligned and no CSV is provided, will default",
+          "to the identity matrix.")),
+      column(4, img(src='corr.png', align = "left", width=80)),
+      ),
     ),
     column(4,
       h2("Alignment"),
@@ -93,20 +102,26 @@ ui <- fluidPage(
       sliderInput("kmed", "Medoids", min = 0, max = 20, value = 6),
       strong("Note:"),
       p("To use medoids, nearest neighbors must be 0."),
-      br(),
+      hr(),
       downloadButton("download", "Download Aligned Data"),
       div(style = "margin-top: 15px"),
       p("Download data as a single CSV using the chosen parameters.  Includes clusters, if applicable."),
     ),
-    column(4,
+    column(3,
       h2("Clustering"),
       checkboxInput("show_clusters", "Show Clusters in Plot", value=F),
-      selectInput("cluster_method", "Method", choices=c("None", "K-Means", "PAM"), selected="PAM"),
+      selectInput("cluster_method", "Method", choices=c("K-Means", "PAM"), selected="PAM"),
       sliderInput("num_clusters", "Clusters", min = 1, max = 7, value = 4),
       
-      h2("Gene Information"),
-      em("Placeholder:"),
-      tableOutput("gci"),
+      # h2("Gene Information"),
+      # em("Placeholder:"),
+      # tableOutput("gci"),
+      
+      hr(),
+      plotOutput("label_transfer_accuracy", height=200),
+      em("Labels are taken from columns present in both metadata files.  zero values",
+        "are assumed to be errant and are excluded.  Case-sensitive.  If no",
+        "barplot is shown, no nonzero labels were detected.")
     ),
   ),
   
@@ -198,7 +213,7 @@ server <- function(input, output, session) {
     # Max 7 colors
     colors = c("blue","green","yellow","orange","red","pink","purple")
     
-    if (input$cluster_method == "None" || normal_colors)
+    if (normal_colors)
       return (list("colors"=colorRampPalette(brewer.pal(n=9, default_color))(12)))
     else if (input$cluster_method == "K-Means")
       clusters = kmeans(working_data, input$num_clusters)$cluster
@@ -281,7 +296,7 @@ server <- function(input, output, session) {
     res = data.frame(df2[df2$data==sample_label,])
     res0 = data.frame(df2)
     time.cols1 = get_clusters(res0, default_color, !input$show_clusters)$colors
-    if (input$cluster_method == "None" || !input$show_clusters)
+    if (!input$show_clusters)
     {
       par(mar=c(5.1,4.1,4.1,4.1), xpd=T)
       s3d<-scatter3D(main=paste("Dataset", substr(sample_label, nchar(sample_label), nchar(sample_label))),
@@ -304,17 +319,12 @@ server <- function(input, output, session) {
                      zlim=c(min(res0$Val2),max(res0$Val2)))
     }
     
-    if (input$cluster_method == "None" || !input$show_clusters)
+    if (!input$show_clusters)
       legend("right", title="Time", legend=levels(as.factor(res$time)), col = c(time.cols1), pch=16, inset = c(0,0), horiz = F,cex=1)
     #legend("top", legend = levels(as.factor(res$data)), pch = c(16, 17),inset = -0.1, xpd = TRUE, horiz = TRUE)
   }
   
   plot_heatmap <- function() {
-    if (input$cluster_method == "None") {
-      plot(NULL, xaxt='n', yaxt='n', bty='n', ylab='', xlab='', xlim=0:1, ylim=0:1)
-      return (NULL)
-    }
-    
     aligned <- perform_alignment()
     clusters <- get_clusters(aligned)
     
@@ -341,7 +351,7 @@ server <- function(input, output, session) {
   }
   
   # Accuracy metrics
-  output$label_transfer_accuracy <- renderText({
+  output$label_transfer_accuracy <- renderPlot({
     # Get inputs
     meta1 <- input$meta1
     meta2 <- input$meta2
@@ -355,36 +365,59 @@ server <- function(input, output, session) {
       meta2 = read.csv(meta2$datapath, row.names=1)
     }
     
-    # Check for possibility
-    if (!("label" %in% colnames(meta1) && "label" %in% colnames(meta2)))
-      return ("Labels not provided")
-    
-    # Get calculations
+    # Prerequisite data
     aligned_data = perform_alignment()
     source_data = data.frame(aligned_data[aligned_data$data=='sample1',])[,3:(2+input$d)]
     transfer_data = data.frame(aligned_data[aligned_data$data=='sample2',])[,3:(2+input$d)]
-    source_labels = meta1$label
-    transfer_labels = meta2$label
     
-    predictions = knn(source_data, transfer_data, cl=source_labels, k=5)
-    correct = sum(predictions == transfer_labels)
+    # Iterate through labels
+    labels = c()
+    acc = c()
+    for (cname in colnames(meta1)) {
+      if (!(cname %in% colnames(meta1) && cname %in% colnames(meta2)))
+        next
+      
+      # Get calculations
+      source_labels = meta1[cname][,1]
+      transfer_labels = meta2[cname][,1]
+      
+      # Batch transfer
+      predictions = knn(source_data, transfer_data, cl=source_labels, k=5)
+      correct = sum(predictions == transfer_labels)
+      cname_acc = (correct / length(transfer_labels))
+      if (cname_acc != 0) {
+        labels = append(labels, cname)
+        acc = append(acc, cname_acc)
+      }
+      
+      # Reverse
+      # predictions = knn(transfer_data, source_data, cl=transfer_labels, k=5)
+      # correct = sum(predictions == source_labels)
+      # if (cname_acc != 0) {
+      #   labels = append(labels, paste("reverse", cname))
+      #   acc = append(acc, cname_acc)
+      # }
+    }
     
-    return (correct / length(transfer_labels))
+    # Barplot
+    if (length(acc) < 1) {
+      plot(NULL, xaxt='n', yaxt='n', bty='n', ylab='', xlab='', xlim=0:1, ylim=0:1)
+      return(NULL)
+    }
+    barplot(acc, main="Label Transfer Accuracy", names.arg=labels, xlim=c(0,1), horiz=T)
   })
   
   # Outputs
   output$content1 <- renderPlot({plot_alignment('sample1', 'Greens')})
   output$content2 <- renderPlot({plot_alignment('sample2', 'Oranges')})
   output$heatmap <- renderPlot({plot_heatmap()})
-  output$gci <- renderTable(data.frame(Gene=c(0,1,2), Contribution=c(0,1,0)))
+  # output$gci <- renderTable(data.frame(Gene=c(0,1,2), Contribution=c(0,1,0)))
   
   output$download <- downloadHandler(
     "aligned.csv",
     function(fname) {
       aligned = perform_alignment()
-      if (input$cluster_method != "None") {
-        aligned = cbind(aligned, cluster=get_clusters(aligned)$clusters)
-      }
+      aligned = cbind(aligned, cluster=get_clusters(aligned)$clusters)
       write.csv(aligned, fname)
     },
     "text/csv"

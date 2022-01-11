@@ -1,3 +1,10 @@
+# 1.3.1
+- Remove 'None' clustering
+- Add www folder
+- Add helping images
+- Additional metadata error analysis and flexibility
+ - Added bar plot for label transfer accuracy
+
 # 1.3.0
 - Clustering visualization fix
 - Visualization QOL updates
