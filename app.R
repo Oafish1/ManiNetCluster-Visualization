@@ -49,9 +49,9 @@ ui <- fluidPage(
       h2("Upload"),
       strong("Row and column labels are expected in all files.  All files are
         also assumed to be ordered similarly (by sample)."),
-      br(), div(style = "margin-top: 30px"),
       
-      div(style="display:inline-block;margin-bottom:-30px",
+      hr(),
+      div(style="display:inline-block;margin-bottom:-20px",
         fluidRow(
         column(6,
           fileInput("mat1", NULL, buttonLabel="First Dataset")
@@ -65,8 +65,8 @@ ui <- fluidPage(
         column(4, img(src='data.png', align = "left", width=80)),
       ),
       
-      br(),
-      div(style="display:inline-block;margin-bottom:-30px",
+      hr(),
+      div(style="display:inline-block;margin-bottom:-20px",
           fluidRow(
           column(6,
             fileInput("meta1", NULL, buttonLabel="First Metadata"),
@@ -76,15 +76,15 @@ ui <- fluidPage(
           ),
       )),
       fluidRow(
-        column(8, p("Metadata should be ordered similarly to dataset data in CSV format.  A",
-         em("time"), "column is expected.  All other columns are assumed to be categorical",
-         "and are used for error reporting.")),
+        column(8, p("Metadata should be ordered similarly to dataset data in CSV format. ",
+         "One column may be chosen as the basis for point coloring in the scatterplot. ",
+         "All other columns are assumed to be categorical and are used for error reporting.")),
         column(4, img(src='metadata.png', align = "left", width=80)),
       ),
       
-      br(),
+      hr(),
       fileInput("corr", NULL, buttonLabel="Correspondence", multiple=FALSE),
-      div(style = "margin-top: -30px"),
+      div(style = "margin-top: -20px"),
       fluidRow(
         column(8,
         p("Correspondence matrix (samples1 x samples2) should be of CSV format. ",
@@ -108,8 +108,11 @@ ui <- fluidPage(
       p("Download data as a single CSV using the chosen parameters.  Includes clusters, if applicable."),
     ),
     column(3,
-      h2("Clustering"),
+      h2("Visualization/Clustering"),
       checkboxInput("show_clusters", "Show Clusters in Plot", value=F),
+      selectInput("color_col", "Series Column", choices=NULL),
+      
+      hr(),
       selectInput("cluster_method", "Method", choices=c("K-Means", "PAM"), selected="PAM"),
       sliderInput("num_clusters", "Clusters", min = 1, max = 7, value = 4),
       
@@ -129,33 +132,6 @@ ui <- fluidPage(
 
 # Server
 server <- function(input, output, session) {
-  output$warnings <- renderText({
-    mat1 <- input$mat1
-    mat2 <- input$mat2
-    corr <- input$corr
-    meta1 <- input$meta1
-    meta2 <- input$meta2
-    
-    # Warnings in priority order
-    if (is.null(mat1) || is.null(mat2))
-      return("Default dataset is being used, please upload data")
-    else {
-      if (!is.null(corr)) {
-        corr <- as.matrix(read.csv(corr$datapath, row.names=1))
-      }
-      else if (dim(mat1)[1] == dim(mat2)[1]) {
-        validate(need(F, "No correspondence matrix provided, identity matrix being used"))
-        corr = diag(dim(mat1)[1])
-      }
-      else {
-        validate(need(F, "Could not construct correspondence matrix, please upload a csv"))
-        return(NULL)
-      }
-    }
-    if (is.null(meta1) || is.null(meta2))
-      return("Default meta is being used, please upload meta")
-  })
-  
   get_method <- function(method_code) {
     for (i in 1:length(alignments)) {
       if (method_code == names(alignments)[i])
@@ -164,51 +140,9 @@ server <- function(input, output, session) {
     return(NULL)
   }
   
-  # Change sliders based on selection
-  refresh_dimensions <- reactive({
-    # -----------------------------------------
-    # Noted for adding new methods
-    method = get_method(input$method)
-    to_show = switch(
-      get_method(input$method),
-      "cca" = c(),
-      "linear manifold" = c("knn"),
-      "manifold warping" = c("knn"),
-      "nonlinear manifold aln" = c("knn"),
-      "nonlinear manifold warp" = c("knn")
-    )
-    
-    # Make all invisible
-    for (id in c("knn", "kmed"))
-      shinyjs::disable(id=id)
-    # Show chosen sliders
-    shinyjs::enable(id="d")
-    dimensions = input$d
-    for (id in to_show)
-      shinyjs::enable(id=id)
-    if (input$knn == 0 && "knn" %in% to_show) {
-      shinyjs::enable(id="kmed")
-      shinyjs::disable(id="d")
-      dimensions = input$kmed
-    }
-    return(dimensions)
-  })
-  observeEvent(input$method, refresh_dimensions())
   
-  # Conditional sliders
-  observeEvent(input$knn, {
-    if (input$knn == 0) {
-      shinyjs::enable(id="kmed")
-      shinyjs::disable(id="d")
-    }
-    else {
-      shinyjs::disable(id="kmed")
-      shinyjs::enable(id="d")
-    }
-  })
-  
-  # Generate clusters / Get colors
   get_clusters <- function(df, default_color="green", normal_colors=F) {
+    # Generate clusters / Get colors
     working_data = df[,3:(2+input$d)]
     # Max 7 colors
     colors = c("blue","green","yellow","orange","red","pink","purple")
@@ -228,48 +162,7 @@ server <- function(input, output, session) {
       validate(need(F, "Invalid clustering method"))
     return (list("clusters"=clusters, "colors"=colors[clusters]))
   }
-    
-  perform_alignment <- reactive({
-    mat1 <- input$mat1
-    mat2 <- input$mat2
-    corr <- input$corr
-    
-    if (is.null(mat1) || is.null(mat2)) {
-      mat1 = as.matrix(read.csv("data/mat1.csv", row.names=1))
-      mat2 = as.matrix(read.csv("data/mat2.csv", row.names=1))
-      corr = as.matrix(read.csv("data/corr.csv", row.names=1))
-    }
-    else {
-      mat1 <- as.matrix(read.csv(mat1$datapath, row.names=1))
-      mat2 <- as.matrix(read.csv(mat2$datapath, row.names=1))
-      
-      # Use KNN as correspondence if applicable
-      if (!is.null(corr)) {
-        corr <- as.matrix(read.csv(corr$datapath, row.names=1))
-      }
-      else if (dim(mat1)[1] == dim(mat2)[1]) {
-        corr = diag(dim(mat1)[1])
-      }
-      else {
-        return(NULL)
-      }
-    }
-    XY_corr = Correspondence(matrix=corr)
-    
-    # Get vars
-    method = get_method(input$method)
-    
-    # Run NLMA
-    ManiNetCluster(
-      mat1,mat2,
-      nameX='sample1',nameY='sample2',
-      corr=XY_corr,
-      d=as.integer(input$d),
-      method=method,
-      k_NN=as.integer(input$knn),
-      k_medoids=as.integer(input$kmed)
-    )
-  })
+  
   
   plot_alignment = function(sample_label, default_color, use_legend=F) {
     dimensions = refresh_dimensions()
@@ -277,22 +170,14 @@ server <- function(input, output, session) {
       "Must have dimensions \u22653 to plot, currently have", dimensions)))
     
     # Get inputs
-    meta1 <- input$meta1
-    meta2 <- input$meta2
-    
-    if (is.null(meta1) || is.null(meta2)) {
-      meta1 = read.csv("data/meta1.csv", row.names=1)
-      meta2 = read.csv("data/meta2.csv", row.names=1)
-    }
-    else {
-      meta1 = read.csv(meta1$datapath, row.names=1)
-      meta2 = read.csv(meta2$datapath, row.names=1)
-    }
+    meta = get_meta()
+    meta1 = meta$meta1
+    meta2 = meta$meta2
     
     # Plot code from paper
     df2 <- perform_alignment()
     # Assumes ordering from NLMA
-    df2$time = c(meta1$time,meta2$time)
+    df2$time = c(meta1[input$color_col][,1],meta2[input$color_col][,1])
     res = data.frame(df2[df2$data==sample_label,])
     res0 = data.frame(df2)
     time.cols1 = get_clusters(res0, default_color, !input$show_clusters)$colors
@@ -301,8 +186,7 @@ server <- function(input, output, session) {
       par(mar=c(5.1,4.1,4.1,4.1), xpd=T)
       s3d<-scatter3D(main=paste("Dataset", substr(sample_label, nchar(sample_label), nchar(sample_label))),
                      x=res[,3],y=res[,4],z=res[,5],
-                     # colvar=as.numeric(mapvalues(res$time,names(table(res$time)),c(2:13))),
-                     colvar=as.numeric(res$time),
+                     colvar=as.numeric(mapvalues(res$time,unique(res$time),c(1:length(unique(res$time))))),
                      col = c(time.cols1), pch=16, #pch=c(16,17)[as.numeric(as.factor(res$data))],
                      colkey=F, theta = 300, phi = 30,cex=2,
                      xlim=c(min(res0$Val0),max(res0$Val0)),
@@ -323,6 +207,7 @@ server <- function(input, output, session) {
       legend("right", title="Time", legend=levels(as.factor(res$time)), col = c(time.cols1), pch=16, inset = c(0,0), horiz = F,cex=1)
     #legend("top", legend = levels(as.factor(res$data)), pch = c(16, 17),inset = -0.1, xpd = TRUE, horiz = TRUE)
   }
+  
   
   plot_heatmap <- function() {
     aligned <- perform_alignment()
@@ -350,8 +235,178 @@ server <- function(input, output, session) {
     legend("bottomright", legend = paste("Cluster ", unique(clusters$clusters), sep=""), col = unique(clusters$colors), pch=16, inset = c(0,0), xpd = TRUE, horiz = F)
   }
   
-  # Accuracy metrics
+  
+  get_meta <- reactive({
+    meta1 <- input$meta1
+    meta2 <- input$meta2
+    
+    if (is.null(meta1) || is.null(meta2)) {
+      meta1 = read.csv("data/meta1.csv", row.names=1)
+      meta2 = read.csv("data/meta2.csv", row.names=1)
+    }
+    else {
+      meta1 = read.csv(meta1$datapath, row.names=1)
+      meta2 = read.csv(meta2$datapath, row.names=1)
+    }
+    
+    return(list("meta1"=meta1, "meta2"=meta2))
+  })
+  
+  
+  get_data <- reactive({
+    mat1 <- input$mat1
+    mat2 <- input$mat2
+    corr <- input$corr
+    
+    if (is.null(mat1) || is.null(mat2)) {
+      mat1 = as.matrix(read.csv("data/mat1.csv", row.names=1))
+      mat2 = as.matrix(read.csv("data/mat2.csv", row.names=1))
+      corr = as.matrix(read.csv("data/corr.csv", row.names=1))
+    }
+    else {
+      mat1 <- as.matrix(read.csv(mat1$datapath, row.names=1))
+      mat2 <- as.matrix(read.csv(mat2$datapath, row.names=1))
+      
+      # Use KNN as correspondence if applicable
+      if (!is.null(corr)) {
+        corr <- as.matrix(read.csv(corr$datapath, row.names=1))
+      }
+      else if (dim(mat1)[1] == dim(mat2)[1]) {
+        corr = diag(dim(mat1)[1])
+      }
+      else {
+        return(NULL)
+      }
+    }
+    
+    return(list("mat1"=mat1, "mat2"=mat2, "corr"=corr))
+  })
+  
+  
+  refresh_dimensions <- reactive({
+    # Change sliders based on selection
+    method = get_method(input$method)
+    to_show = switch(
+      get_method(input$method),
+      "cca" = c(),
+      "linear manifold" = c("knn"),
+      "manifold warping" = c("knn"),
+      "nonlinear manifold aln" = c("knn"),
+      "nonlinear manifold warp" = c("knn")
+    )
+    
+    # Make all invisible
+    for (id in c("knn", "kmed"))
+      shinyjs::disable(id=id)
+    # Show chosen sliders
+    shinyjs::enable(id="d")
+    dimensions = input$d
+    for (id in to_show)
+      shinyjs::enable(id=id)
+    if (input$knn == 0 && "knn" %in% to_show) {
+      shinyjs::enable(id="kmed")
+      shinyjs::disable(id="d")
+      dimensions = input$kmed
+    }
+    return(dimensions)
+  })
+  observeEvent(input$method, refresh_dimensions())
+  
+  
+  conditional_sliders <- reactive({
+    # Conditional sliders
+    if (input$knn == 0) {
+      shinyjs::enable(id="kmed")
+      shinyjs::disable(id="d")
+    }
+    else {
+      shinyjs::disable(id="kmed")
+      shinyjs::enable(id="d")
+    }
+  })
+  observeEvent(input$knn, conditional_sliders())
+  
+  
+  color_col_choices <- reactive({
+    meta = get_meta()
+    meta1 = meta$meta1
+    meta2 = meta$meta2
+    
+    color_cols = c()
+    for(col in colnames(meta1))
+      if(col %in% colnames(meta2))
+        color_cols = append(color_cols, col)
+    return(color_cols)
+  })
+  observeEvent(color_col_choices(), updateSelectInput(session, "color_col", choices=color_col_choices()))
+  
+  conditional_colors <- reactive({
+    if (input$show_clusters) {
+      shinyjs::disable(id="color_col")
+    }
+    else {
+      shinyjs::enable(id="color_col")
+    }
+  })
+  observeEvent(input$show_clusters, conditional_colors())
+    
+  
+  perform_alignment <- reactive({
+    data = get_data()
+    if(is.null(data))
+      return(NULL)
+    mat1 = data$mat1
+    mat2 = data$mat2
+    corr = data$corr
+    
+    XY_corr = Correspondence(matrix=corr)
+    
+    # Get vars
+    method = get_method(input$method)
+    
+    # Run NLMA
+    ManiNetCluster(
+      mat1,mat2,
+      nameX='sample1',nameY='sample2',
+      corr=XY_corr,
+      d=as.integer(input$d),
+      method=method,
+      k_NN=as.integer(input$knn),
+      k_medoids=as.integer(input$kmed)
+    )
+  })
+  
+  
+  output$warnings <- renderText({
+    mat1 <- input$mat1
+    mat2 <- input$mat2
+    corr <- input$corr
+    meta1 <- input$meta1
+    meta2 <- input$meta2
+    
+    # Warnings in priority order
+    if (is.null(mat1) || is.null(mat2))
+      return("Default dataset is being used, please upload data")
+    else {
+      if (!is.null(corr)) {
+        corr <- as.matrix(read.csv(corr$datapath, row.names=1))
+      }
+      else if (dim(mat1)[1] == dim(mat2)[1]) {
+        validate(need(F, "No correspondence matrix provided, identity matrix being used"))
+        corr = diag(dim(mat1)[1])
+      }
+      else {
+        validate(need(F, "Could not construct correspondence matrix, please upload a csv"))
+        return(NULL)
+      }
+    }
+    if (is.null(meta1) || is.null(meta2))
+      return("Default meta is being used, please upload meta")
+  })
+  
+  
   output$label_transfer_accuracy <- renderPlot({
+    # Accuracy metrics
     # Get inputs
     meta1 <- input$meta1
     meta2 <- input$meta2
@@ -407,21 +462,18 @@ server <- function(input, output, session) {
     barplot(acc, main="Label Transfer Accuracy", names.arg=labels, xlim=c(0,1), horiz=T)
   })
   
-  # Outputs
+  
   output$content1 <- renderPlot({plot_alignment('sample1', 'Greens')})
   output$content2 <- renderPlot({plot_alignment('sample2', 'Oranges')})
   output$heatmap <- renderPlot({plot_heatmap()})
   # output$gci <- renderTable(data.frame(Gene=c(0,1,2), Contribution=c(0,1,0)))
   
-  output$download <- downloadHandler(
-    "aligned.csv",
-    function(fname) {
+  
+  output$download <- downloadHandler("aligned.csv", function(fname) {
       aligned = perform_alignment()
       aligned = cbind(aligned, cluster=get_clusters(aligned)$clusters)
       write.csv(aligned, fname)
-    },
-    "text/csv"
-  )
+    }, "text/csv")
 }
 
 # Run

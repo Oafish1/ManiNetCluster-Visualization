@@ -1,5 +1,11 @@
+# 1.3.2
+- Remove `time` default coloring
+- Add dynamic selection of coloring column in metadata
+- Code cleanup
+
+
 # 1.3.1
-- Remove 'None' clustering
+- Remove `None` clustering
 - Add www folder
 - Add helping images
 - Additional metadata error analysis and flexibility
