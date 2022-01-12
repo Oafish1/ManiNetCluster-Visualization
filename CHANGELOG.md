@@ -1,8 +1,11 @@
+# 1.3.3
+- Removed upload/download size limitation
+- Update `README.md` with minimal usage instructions
+
 # 1.3.2
 - Remove `time` default coloring
 - Add dynamic selection of coloring column in metadata
 - Code cleanup
-
 
 # 1.3.1
 - Remove `None` clustering

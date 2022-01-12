@@ -26,6 +26,9 @@ names(alignments) = c(
   "Non-Linear Manifold Warping"
 )
 
+# Options
+options(shiny.maxRequestSize=0)
+
 # UI
 ui <- fluidPage(
   # Meta
