@@ -7,4 +7,4 @@ data/*
 **/backup/*
 
 # Scratch
-*.svg
+downloads/

@@ -1,3 +1,15 @@
+# 1.3.4
+- Change UI text
+- Code optimization
+- Fixed legend title bug
+- Fix startup errors
+- Add indication for alignments in progress
+- Move default data read to somewhere more appropriate
+- Update helper UI icons
+- Directory reorganization
+- Uploaded raw svg for icons
+
+
 # 1.3.3
 - Removed upload/download size limitation
 - Update `README.md` with minimal usage instructions

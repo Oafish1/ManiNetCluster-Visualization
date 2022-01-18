@@ -10,6 +10,14 @@ library(RColorBrewer)
 library(shiny)
 library(shinyjs)
 
+
+# Defaults
+default_meta1 = read.csv("data/meta1.csv", row.names=1)
+default_meta2 = read.csv("data/meta2.csv", row.names=1)
+default_mat1 = as.matrix(read.csv("data/mat1.csv", row.names=1))
+default_mat2 = as.matrix(read.csv("data/mat2.csv", row.names=1))
+default_corr = as.matrix(read.csv("data/corr.csv", row.names=1))
+
 # CTW returns only two dim for some reason?
 alignments = c(
   "cca", 
@@ -32,12 +40,12 @@ options(shiny.maxRequestSize=0)
 # UI
 ui <- fluidPage(
   # Meta
-  title="ManiNetCluster Alignment Visualization Tool",
+  title="BOMA Calculator",
   
   # Main plot
   # asddf: Add interactive plotting
   useShinyjs(),
-  h2("ManiNetCluster Webapp"),
+  h2("BOMA Calculator"),
   textOutput("warnings"),
   fluidRow(
     column(4, plotOutput("content1")),
@@ -64,7 +72,8 @@ ui <- fluidPage(
         ),
       )),
       fluidRow(
-        column(8, p("Data should be of dimension (samples x features) in CSV format.")),
+        column(8, p("Data should be of dimension (samples x features) in CSV format. ",
+                    "Assumed to be pre-normalized.")),
         column(4, img(src='data.png', align = "left", width=80)),
       ),
       
@@ -108,7 +117,7 @@ ui <- fluidPage(
       hr(),
       downloadButton("download", "Download Aligned Data"),
       div(style = "margin-top: 15px"),
-      p("Download data as a single CSV using the chosen parameters.  Includes clusters, if applicable."),
+      p("Download data as a single CSV using the chosen parameters.  Includes clusters."),
     ),
     column(3,
       h2("Visualization/Clustering"),
@@ -171,6 +180,7 @@ server <- function(input, output, session) {
     dimensions = refresh_dimensions()
     validate(need(dimensions >= 3, paste(
       "Must have dimensions \u22653 to plot, currently have", dimensions)))
+    validate(need(input$color_col != "", "Coloring column must be non-empty"))
     
     # Get inputs
     meta = get_meta()
@@ -207,7 +217,7 @@ server <- function(input, output, session) {
     }
     
     if (!input$show_clusters)
-      legend("right", title="Time", legend=levels(as.factor(res$time)), col = c(time.cols1), pch=16, inset = c(0,0), horiz = F,cex=1)
+      legend("right", title=input$color_col, legend=levels(as.factor(res$time)), col = c(time.cols1), pch=16, inset = c(0,0), horiz = F,cex=1)
     #legend("top", legend = levels(as.factor(res$data)), pch = c(16, 17),inset = -0.1, xpd = TRUE, horiz = TRUE)
   }
   
@@ -244,8 +254,8 @@ server <- function(input, output, session) {
     meta2 <- input$meta2
     
     if (is.null(meta1) || is.null(meta2)) {
-      meta1 = read.csv("data/meta1.csv", row.names=1)
-      meta2 = read.csv("data/meta2.csv", row.names=1)
+      meta1 = default_meta1
+      meta2 = default_meta2
     }
     else {
       meta1 = read.csv(meta1$datapath, row.names=1)
@@ -262,9 +272,9 @@ server <- function(input, output, session) {
     corr <- input$corr
     
     if (is.null(mat1) || is.null(mat2)) {
-      mat1 = as.matrix(read.csv("data/mat1.csv", row.names=1))
-      mat2 = as.matrix(read.csv("data/mat2.csv", row.names=1))
-      corr = as.matrix(read.csv("data/corr.csv", row.names=1))
+      mat1 = default_mat1
+      mat2 = default_mat2
+      corr = default_corr
     }
     else {
       mat1 <- as.matrix(read.csv(mat1$datapath, row.names=1))
@@ -355,6 +365,9 @@ server <- function(input, output, session) {
     
   
   perform_alignment <- reactive({
+    # https://stackoverflow.com/a/52741787
+    showModal(modalDialog("Calculating Alignment", footer=NULL, easyClose=T))
+    
     data = get_data()
     if(is.null(data))
       return(NULL)
@@ -368,7 +381,7 @@ server <- function(input, output, session) {
     method = get_method(input$method)
     
     # Run NLMA
-    ManiNetCluster(
+    aligned = ManiNetCluster(
       mat1,mat2,
       nameX='sample1',nameY='sample2',
       corr=XY_corr,
@@ -377,6 +390,9 @@ server <- function(input, output, session) {
       k_NN=as.integer(input$knn),
       k_medoids=as.integer(input$kmed)
     )
+    
+    removeModal()
+    aligned
   })
   
   
@@ -411,17 +427,9 @@ server <- function(input, output, session) {
   output$label_transfer_accuracy <- renderPlot({
     # Accuracy metrics
     # Get inputs
-    meta1 <- input$meta1
-    meta2 <- input$meta2
-    
-    if (is.null(meta1) || is.null(meta2)) {
-      meta1 = read.csv("data/meta1.csv", row.names=1)
-      meta2 = read.csv("data/meta2.csv", row.names=1)
-    }
-    else {
-      meta1 = read.csv(meta1$datapath, row.names=1)
-      meta2 = read.csv(meta2$datapath, row.names=1)
-    }
+    meta = get_meta()
+    meta1 = meta$meta1
+    meta2 = meta$meta2
     
     # Prerequisite data
     aligned_data = perform_alignment()
