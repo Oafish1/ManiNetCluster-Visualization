@@ -40,12 +40,12 @@ options(shiny.maxRequestSize=0)
 # UI
 ui <- fluidPage(
   # Meta
-  title="BOMA Calculator",
+  title="Dataset Alignment Applet",
   
   # Main plot
   # asddf: Add interactive plotting
   useShinyjs(),
-  h2("BOMA Calculator"),
+  h2("Dataset Alignment Applet"),
   textOutput("warnings"),
   fluidRow(
     column(4, plotOutput("content1")),
@@ -108,6 +108,7 @@ ui <- fluidPage(
     ),
     column(4,
       h2("Alignment"),
+      checkboxInput("use_boma", "Use BOMA (Beta)", value=F),
       selectInput("method", "Method", choices=names(alignments), selected="Non-Linear Manifold Alignment"),
       sliderInput("d", "Dimensions", min = 1, max = 20, value = 3),
       sliderInput("knn", "Nearest Neighbors", min = 0, max = 20, value = 3), 
@@ -193,7 +194,7 @@ server <- function(input, output, session) {
     df2$time = c(meta1[input$color_col][,1],meta2[input$color_col][,1])
     res = data.frame(df2[df2$data==sample_label,])
     res0 = data.frame(df2)
-    time.cols1 = get_clusters(res0, default_color, !input$show_clusters)$colors
+    time.cols1 = get_clusters(df2, default_color, !input$show_clusters)$colors
     if (!input$show_clusters)
     {
       par(mar=c(5.1,4.1,4.1,4.1), xpd=T)
@@ -207,10 +208,13 @@ server <- function(input, output, session) {
                      zlim=c(min(res0$Val2),max(res0$Val2)))
     }
     else {
+      time.cols1 = time.cols1[df2$data==sample_label]
       s3d<-scatter3D(main=paste("Dataset", substr(sample_label, nchar(sample_label), nchar(sample_label))),
                      x=res[,3],y=res[,4],z=res[,5],
+                     #x=res[time.cols1=="yellow",3],y=res[time.cols1=="yellow",4],z=res[time.cols1=="yellow",5],
                      col = c(time.cols1), pch=16, #pch=c(16,17)[as.numeric(as.factor(res$data))],
-                     colkey=F, theta = 300, phi = 30,cex=2,
+                     colkey=F, # Comment if obscured to test if included
+                     theta = 300, phi = 30,cex=2,
                      xlim=c(min(res0$Val0),max(res0$Val0)),
                      ylim=c(min(res0$Val1),max(res0$Val1)),
                      zlim=c(min(res0$Val2),max(res0$Val2)))
@@ -243,7 +247,7 @@ server <- function(input, output, session) {
     
     par(mar=c(5.1,4.1,4.1,4.1), xpd=T)
     ramp = colorRampPalette(rev(brewer.pal(9, "Greys")))
-    heatmap(dist, main="Distance Heatmap", RowSideColors=rsc, ColSideColors=csc, Colv=NA, Rowv=NA, labCol=F, labRow=F, col=ramp(256))
+    heatmap(dist, main="Distance", xlab="Dataset 2", ylab="Dataset 1", RowSideColors=rsc, ColSideColors=csc, Colv=NA, Rowv=NA, labCol=F, labRow=F, col=ramp(256))
     legend("topright", legend=c("close", "mid", "far"), inset = c(0,0), fill=ramp(3))
     legend("bottomright", legend = paste("Cluster ", unique(clusters$clusters), sep=""), col = unique(clusters$colors), pch=16, inset = c(0,0), xpd = TRUE, horiz = F)
   }
@@ -380,16 +384,29 @@ server <- function(input, output, session) {
     # Get vars
     method = get_method(input$method)
     
-    # Run NLMA
-    aligned = ManiNetCluster(
-      mat1,mat2,
-      nameX='sample1',nameY='sample2',
-      corr=XY_corr,
-      d=as.integer(input$d),
-      method=method,
-      k_NN=as.integer(input$knn),
-      k_medoids=as.integer(input$kmed)
-    )
+    # Perform Alignment
+    if(input$use_boma) {
+      # PLACEHOLDER
+      aligned = ManiNetCluster(
+        mat1,mat2,
+        nameX='sample1',nameY='sample2',
+        corr=XY_corr,
+        d=as.integer(input$d),
+        method=method,
+        k_NN=as.integer(input$knn),
+        k_medoids=as.integer(input$kmed)
+      )
+    } else {
+      aligned = ManiNetCluster(
+        mat1,mat2,
+        nameX='sample1',nameY='sample2',
+        corr=XY_corr,
+        d=as.integer(input$d),
+        method=method,
+        k_NN=as.integer(input$knn),
+        k_medoids=as.integer(input$kmed)
+      )
+    }
     
     removeModal()
     aligned
@@ -470,7 +487,9 @@ server <- function(input, output, session) {
       plot(NULL, xaxt='n', yaxt='n', bty='n', ylab='', xlab='', xlim=0:1, ylim=0:1)
       return(NULL)
     }
-    barplot(acc, main="Label Transfer Accuracy", names.arg=labels, xlim=c(0,1), horiz=T)
+    bar = barplot(acc, main="Label Transfer Accuracy", names.arg=labels, xlim=c(0,1), horiz=T)
+    # https://stackoverflow.com/a/59658285
+    text(max(acc - .3, .2), bar, round(acc,3), font=2)
   })
   
   

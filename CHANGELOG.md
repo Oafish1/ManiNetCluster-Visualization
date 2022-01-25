@@ -1,3 +1,10 @@
+# 1.3.5
+- Added heatmap labels
+- Various UI updates
+- Better accuracy barplot formatting
+- Fixed cluster coloration bug
+- Added BOMA checkbox, still needs full implementation
+
 # 1.3.4
 - Change UI text
 - Code optimization
@@ -8,7 +15,6 @@
 - Update helper UI icons
 - Directory reorganization
 - Uploaded raw svg for icons
-
 
 # 1.3.3
 - Removed upload/download size limitation
