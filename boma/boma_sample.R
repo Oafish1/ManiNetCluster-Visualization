@@ -13,28 +13,28 @@ library(ManiNetCluster)
 source('./boma/func.r')
 
 
-##############################start#################
-load('all.data.RData')
+load('bulk2.RData')
+rownames(sel.meta2) = sel.meta2$SampleID
+sel.meta2 = sel.meta2[, colnames(sel.meta2) !='SampleID']
 
-nTopGenes = 15000
+load('all.RData')
+
+form.data1 = mat1
+form.data2 = mat2
+form.meta1 = sel.meta1
+form.meta2 = sel.meta2
+
+nTopGenes=15000
 ##Seurat to normalize & scale data matrix 1
-tmp.form=get_form_seurat(org.data1,org.meta1,type='COUNTS',hvg=nTopGenes,resolution=10)
-form.data1 = tmp.form[[1]]
-form.meta1 = tmp.form[[2]]
+tmp.form=get_form_seurat(t(mat1),sel.meta1,type='COUNTS',hvg=nTopGenes,resolution=10)
+sel.data1 = tmp.form[[1]]
+sel.meta1 = tmp.form[[2]]
 
 ##Seurat to normalize & scale data matrix 2
-tmp.form=get_form_seurat(human.data1,human.meta1,type='COUNTS',hvg=nTopGenes,resolution=10)
-form.data2 = tmp.form[[1]]
-form.meta2 = tmp.form[[2]]
+tmp.form=get_form_seurat(t(mat2),sel.meta2,type='COUNTS',hvg=nTopGenes,resolution=10)
+sel.data2 = tmp.form[[1]]
+sel.meta2 = tmp.form[[2]]
 
-# CHANGED UP TO HERE
-
-########################################################
-##overlap with human brain developmental genes##
-sel.genes = intersect(intersect(row.names(form.data1),row.names(form.data2)),unique(all.rec$gene))
-##normalize 
-sel.data1 = form.data1[row.names(form.data1) %in% sel.genes,]; sel.data1 = sel.data1[!duplicated(row.names(sel.data1)),]; sel.meta1=form.meta1
-sel.data2 = form.data2[row.names(form.data2) %in% sel.genes,]; sel.data2 = sel.data2[!duplicated(row.names(sel.data2)),]; sel.meta2=form.meta2 
 #log transform
 exp1 = log(sel.data1+1)
 exp2 = log(sel.data2+1)
@@ -42,9 +42,7 @@ exp2 = log(sel.data2+1)
 exp1 = exp1[order(row.names(exp1)),order(sel.meta1$time)];sel.meta1=sel.meta1[order(sel.meta1$time),]
 exp2 = exp2[order(row.names(exp2)),order(sel.meta2$time)];sel.meta2=sel.meta2[order(sel.meta2$time),]
 
-print('generating pseudo cells')
-source('src/func.r')
-###########################################
+#print('generating pseudo cells')
 ##pcells for sample1
 sel.meta1$tag2 = paste(sel.meta1$tag,sel.meta1$seurat_clusters,sel.meta1$fctp,sep='-')
 pcell1.info = pcell.from.fctp_seurat(exp1,sel.meta1)
@@ -65,11 +63,7 @@ ps.tag2 = pcell2.info[[2]]
 ps.belong2 = pcell2.info[[3]]
 ps.gex2 = pcell2.info[[4]]
 
-
-print('performing alignment')
-###########perform alignment#############
-
-
+# print('performing alignment')
 ##focus on overlapped cell types between sample sources only!!!!!!!!!!!!!!!##############
 ps.mat01=ps.mat1;ps.mat02=ps.mat2;ps.tag01=ps.tag1;ps.tag02=ps.tag2
 ps.mat1 = ps.mat1[(ps.tag1[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
@@ -77,5 +71,4 @@ ps.tag1 = ps.tag1[(ps.tag1[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
 ps.mat2 = ps.mat2[(ps.tag2[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
 ps.tag2 = ps.tag2[(ps.tag2[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
 
-########
-algn_res=runMSMA_cor(ps.mat1,ps.mat2,k=1)
+aligned=runMSMA_cor(ps.mat1,ps.mat2,k=1)

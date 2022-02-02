@@ -20,6 +20,8 @@ get_form_seurat<-function(rdata,meta,type='COUNTS',hvg=6000,resolution=0.5) {
 		stop('for now, can only accept raw counts')
 	}
 	form.data = form.data[row.names(form.data) %in% VariableFeatures(obj),]
+	#print(rownames(obj[['RNA']]@data))
+	#print(row.names(meta))
 	form.meta = meta[row.names(meta) %in% colnames(form.data),]
 	form.meta$seurat_clusters = obj@meta.data$seurat_clusters
 
