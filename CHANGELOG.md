@@ -1,3 +1,7 @@
+# 1.3.6
+- Added movable plots
+- Transitioned main plots to `plotly`
+
 # 1.3.5
 - Added heatmap labels
 - Various UI updates

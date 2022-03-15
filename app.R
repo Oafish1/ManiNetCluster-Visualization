@@ -2,14 +2,18 @@
 # Libraries
 library(class)
 library(cluster)
+library(htmlwidgets)
 library(ManiNetCluster)
 library(pdist)
 library(plot3D)
+library(plotly)
 library(plyr)
 library(RColorBrewer)
 library(shiny)
 library(shinyjs)
+
 source('./boma/func.r')
+
 
 
 # Defaults
@@ -52,8 +56,8 @@ ui <- fluidPage(
   h2("Dataset Alignment Applet"),
   textOutput("warnings"),
   fluidRow(
-    column(4, plotOutput("content1")),
-    column(4, plotOutput("content2")),
+    column(4, plotlyOutput("content1")),
+    column(4, plotlyOutput("content2")),
     column(4, plotOutput("heatmap")),
   ),
   hr(),
@@ -159,14 +163,14 @@ server <- function(input, output, session) {
   }
   
   
-  get_clusters <- function(df, default_color="green", normal_colors=F) {
+  get_clusters <- function(df, default_color="green", normal_colors=F, num_colors=8) {
     # Generate clusters / Get colors
     working_data = df[,3:(2+input$d)]
     # Max 7 colors
     colors = c("blue","green","yellow","orange","red","pink","purple")
     
     if (normal_colors)
-      return (list("colors"=colorRampPalette(brewer.pal(n=9, default_color))(12)))
+      return (list("colors"=colorRampPalette(brewer.pal(n=9, default_color))(num_colors)))
     else if (input$cluster_method == "K-Means")
       clusters = kmeans(working_data, input$num_clusters)$cluster
     else if (input$cluster_method == "PAM")
@@ -174,7 +178,7 @@ server <- function(input, output, session) {
     else if (input$cluster_method == "Spectral") {
       s1 <- as.matrix(data.frame(df[df$data=="sample1",])[,3:(2+input$d)])
       s2 <- as.matrix(data.frame(df[df$data=="sample2",])[,3:(2+input$d)])
-      dist = as.matrix(pdist(s1, s2))
+      dist = as.matrix(pdist::pdist(s1, s2))
     }
     else
       validate(need(F, "Invalid clustering method"))
@@ -199,35 +203,49 @@ server <- function(input, output, session) {
     df2$time = c(meta1[input$color_col][,1],meta2[input$color_col][,1])
     res = data.frame(df2[df2$data==sample_label,])
     res0 = data.frame(df2)
-    time.cols1 = get_clusters(df2, default_color, !input$show_clusters)$colors
-    if (!input$show_clusters)
-    {
+    clusters = get_clusters(df2, default_color, !input$show_clusters, length(unique(res$time)))
+    time.cols1 = clusters$colors
+    if (!input$show_clusters) {
       par(mar=c(5.1,4.1,4.1,4.1), xpd=T)
-      s3d<-scatter3D(main=paste("Dataset", substr(sample_label, nchar(sample_label), nchar(sample_label))),
-                     x=res[,3],y=res[,4],z=res[,5],
-                     colvar=as.numeric(mapvalues(res$time,unique(res$time),c(1:length(unique(res$time))))),
-                     col = c(time.cols1), pch=16, #pch=c(16,17)[as.numeric(as.factor(res$data))],
-                     colkey=F, theta = 300, phi = 30,cex=2,
-                     xlim=c(min(res0$Val0),max(res0$Val0)),
-                     ylim=c(min(res0$Val1),max(res0$Val1)),
-                     zlim=c(min(res0$Val2),max(res0$Val2)))
-    }
-    else {
+      time.cols1 = time.cols1[ as.numeric(mapvalues(res$time,unique(res$time),c(1:length(unique(res$time))))) ]
+      data = data.frame(x=res[,3], y=res[,4], z=res[,5], color=time.cols1, label=as.factor(res$time))
+      
+      legend_title = input$color_col
+    } else {
       time.cols1 = time.cols1[df2$data==sample_label]
-      s3d<-scatter3D(main=paste("Dataset", substr(sample_label, nchar(sample_label), nchar(sample_label))),
-                     x=res[,3],y=res[,4],z=res[,5],
-                     #x=res[time.cols1=="yellow",3],y=res[time.cols1=="yellow",4],z=res[time.cols1=="yellow",5],
-                     col = c(time.cols1), pch=16, #pch=c(16,17)[as.numeric(as.factor(res$data))],
-                     colkey=F, # Comment if obscured to test if included
-                     theta = 300, phi = 30,cex=2,
-                     xlim=c(min(res0$Val0),max(res0$Val0)),
-                     ylim=c(min(res0$Val1),max(res0$Val1)),
-                     zlim=c(min(res0$Val2),max(res0$Val2)))
+      labels = paste("Cluster ", clusters$clusters[df2$data==sample_label], sep="")
+      data = data.frame(x=res[,3], y=res[,4], z=res[,5], color=time.cols1, label=labels)
+      legend_title = "Clusters"
     }
+    data = data[order(data$label), ]
     
-    if (!input$show_clusters)
-      legend("right", title=input$color_col, legend=levels(as.factor(res$time)), col = c(time.cols1), pch=16, inset = c(0,0), horiz = F,cex=1)
-    #legend("top", legend = levels(as.factor(res$data)), pch = c(16, 17),inset = -0.1, xpd = TRUE, horiz = TRUE)
+    s3d = plot_ly(
+      type = "scatter3d",
+      mode = "markers",
+      data = data,
+      x = ~x, y = ~y, z = ~z,
+      marker = list(bgcolor="#e5e5e5", color=~color),
+      split=~label
+    )
+    # https://stackoverflow.com/a/66117098 for continually rotating
+    s3d %>% layout(
+      title=paste("Dataset", substr(sample_label, nchar(sample_label), nchar(sample_label))),
+      legend=list(title=list(text=legend_title)),
+      scene=list(
+        xaxis=list(range=c(min(res0$Val0), max(res0$Val0))),
+        yaxis=list(range=c(min(res0$Val1), max(res0$Val1))),
+        zaxis=list(range=c(min(res0$Val2), max(res0$Val2))),
+        camera=list(
+          eye = list(
+            x = 1.25,
+            y = 1.25,
+            z = 1.25),
+          center = list(
+            x = 0,
+            y = 0,
+            z = 0
+        ))
+    ))
   }
   
   
@@ -248,7 +266,7 @@ server <- function(input, output, session) {
     s1 = s1[nrow(s1):1,]
     rsc = rsc[length(rsc):1]
     
-    dist = as.matrix(pdist(s1, s2))
+    dist = as.matrix(pdist::pdist(s1, s2))
     
     par(mar=c(5.1,4.1,4.1,4.1), xpd=T)
     ramp = colorRampPalette(rev(brewer.pal(9, "Greys")))
@@ -549,8 +567,8 @@ server <- function(input, output, session) {
   })
   
   
-  output$content1 <- renderPlot({plot_alignment('sample1', 'Greens')})
-  output$content2 <- renderPlot({plot_alignment('sample2', 'Oranges')})
+  output$content1 <- renderPlotly({plot_alignment('sample1', 'Greens')})
+  output$content2 <- renderPlotly({plot_alignment('sample2', 'Oranges')})
   output$heatmap <- renderPlot({plot_heatmap()})
   # output$gci <- renderTable(data.frame(Gene=c(0,1,2), Contribution=c(0,1,0)))
   
