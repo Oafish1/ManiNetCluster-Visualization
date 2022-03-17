@@ -1,3 +1,6 @@
+# 1.3.7
+- Uploaded default data
+
 # 1.3.6
 - Added movable plots
 - Transitioned main plots to `plotly`

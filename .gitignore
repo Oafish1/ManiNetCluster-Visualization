@@ -3,7 +3,7 @@
 .Rhistory
 
 # Data
-data/*
+data/backup/*
 **/backup/*
 
 # Scratch
