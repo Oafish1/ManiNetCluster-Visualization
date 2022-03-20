@@ -1,6 +1,6 @@
 # ManiNetCluster Visualization
 
-`site.R` is an R Shiny application to visualize aligned datasets.  Multiple tunable alignment and visualization parameters are present along with a live 3D view.
+`app.R` is an R Shiny application to visualize aligned datasets.  Multiple tunable alignment and visualization parameters are present along with a live 3D view.
 
 ![UI example on sample data](./images/ui.png)
 
@@ -10,4 +10,4 @@
 
 ## Known Issues
 - Sample data does not work with medoid calculation.
-- Sample data does not include `label` metadata.
+- If uploading datasets first, the applet may appear to be stuck on 'calculating'.  Clicking anywhere on the page should resolve this.

@@ -1,3 +1,6 @@
+# 1.3.8
+- Added compatibility for `ShinyApps.io`
+
 # 1.3.7
 - Uploaded default data
 

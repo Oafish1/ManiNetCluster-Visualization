@@ -3,7 +3,6 @@
 library(class)
 library(cluster)
 library(htmlwidgets)
-library(ManiNetCluster)
 library(pdist)
 library(plot3D)
 library(plotly)
@@ -14,14 +13,28 @@ library(shinyjs)
 
 source('./boma/func.r')
 
+# Set up reticulate (https://github.com/ranikay/shiny-reticulate-app)
+# Requires python 3
+PYTHON_DEPENDENCIES = c('pip', 'matplotlib', 'pandas', 'scipy', 'sklearn')
+virtualenv_dir = Sys.getenv('VIRTUALENV_NAME')
+python_path = Sys.getenv('PYTHON_PATH')
 
+# Create virtual env and install dependencies
+# https://github.com/namtk/ManiNetCluster
+reticulate::virtualenv_create(envname=virtualenv_dir, python=python_path)
+reticulate::virtualenv_install(virtualenv_dir, packages=PYTHON_DEPENDENCIES, ignore_installed=FALSE)
+reticulate::use_virtualenv(virtualenv_dir, required=T)
+
+# Import python functions
+# devtools::install_github("namtk/ManiNetCluster")
+reticulate::source_python('./maniNetCluster/pyManifold.py')
 
 # Defaults
-default_meta1 = read.csv("data/meta1.csv", row.names=1)
-default_meta2 = read.csv("data/meta2.csv", row.names=1)
-default_mat1 = as.matrix(read.csv("data/mat1.csv", row.names=1))
-default_mat2 = as.matrix(read.csv("data/mat2.csv", row.names=1))
-default_corr = as.matrix(read.csv("data/corr.csv", row.names=1))
+default_meta1 = read.csv("./data/meta1.csv", row.names=1)
+default_meta2 = read.csv("./data/meta2.csv", row.names=1)
+default_mat1 = as.matrix(read.csv("./data/mat1.csv", row.names=1))
+default_mat2 = as.matrix(read.csv("./data/mat2.csv", row.names=1))
+default_corr = as.matrix(read.csv("./data/corr.csv", row.names=1))
 
 rownames(default_meta2) = default_meta2$SampleID
 default_meta2 = default_meta2[, colnames(default_meta2) !='SampleID']

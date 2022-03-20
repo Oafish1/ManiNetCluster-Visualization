@@ -10,4 +10,4 @@ data/backup/*
 downloads/
 
 # Portable
-portable/*
+boma_webapp/*
