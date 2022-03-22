@@ -303,7 +303,7 @@ server <- function(input, output, session) {
     meta2 <- input$meta2
     
     if (is.null(meta1) || is.null(meta2)) {
-      meta1 = default_meta1[1:5,]
+      meta1 = default_meta1
       meta2 = default_meta2
     }
     else {
