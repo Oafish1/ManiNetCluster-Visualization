@@ -80,7 +80,8 @@ ui <- fluidPage(
     column(5,
       h2("Upload"),
       strong("Row and column labels are expected in all files.  All files are
-        also assumed to be ordered similarly (by sample)."),
+        also assumed to be ordered similarly (by sample).  Default data can be
+        found", a("here", href="https://github.com/Oafish1/ManiNetCluster-Visualization/tree/main/data")),
       
       hr(),
       div(style="display:inline-block;margin-bottom:-20px",
@@ -129,14 +130,15 @@ ui <- fluidPage(
     ),
     column(4,
       h2("Alignment"),
+      strong("BOMA"),
       p("For BOMA, it is assumed that columns 'tag', 'fctp', and 'seurat clusters' are provided."),
       checkboxInput("use_boma", "Use BOMA (Beta)", value=F),
       selectInput("method", "Method", choices=names(alignments), selected="Non-Linear Manifold Alignment"),
       sliderInput("d", "Dimensions", min = 1, max = 20, value = 3),
       sliderInput("knn", "Nearest Neighbors", min = 0, max = 20, value = 3), 
-      sliderInput("kmed", "Medoids", min = 0, max = 20, value = 6),
-      strong("Note:"),
-      p("To use medoids, nearest neighbors must be 0."),
+      # sliderInput("kmed", "Medoids", min = 0, max = 20, value = 6),
+      # strong("Note:"),
+      # p("To use medoids, nearest neighbors must be 0."),
       hr(),
       downloadButton("download", "Download Aligned Data"),
       div(style = "margin-top: 15px"),
@@ -145,7 +147,7 @@ ui <- fluidPage(
     column(3,
       h2("Visualization/Clustering"),
       checkboxInput("show_clusters", "Show Clusters in Plot", value=F),
-      selectInput("color_col", "Series Column", choices=NULL),
+      selectInput("color_col", "Series Color Column", choices=NULL),
       
       hr(),
       selectInput("cluster_method", "Method", choices=c("K-Means", "PAM"), selected="PAM"),
@@ -207,11 +209,15 @@ server <- function(input, output, session) {
     
     # Get inputs
     meta = get_meta()
+    if(is.null(meta))
+      return(NULL)
     meta1 = meta$meta1
     meta2 = meta$meta2
     
     # Plot code from paper
     df2 <- perform_alignment()
+    if(is.null(df2))
+      return(NULL)
     # Assumes ordering from NLMA
     df2$time = c(meta1[input$color_col][,1],meta2[input$color_col][,1])
     res = data.frame(df2[df2$data==sample_label,])
@@ -248,6 +254,7 @@ server <- function(input, output, session) {
         xaxis=list(range=c(min(res0$Val0), max(res0$Val0))),
         yaxis=list(range=c(min(res0$Val1), max(res0$Val1))),
         zaxis=list(range=c(min(res0$Val2), max(res0$Val2))),
+        aspectmode='cube',
         camera=list(
           eye = list(
             x = 1.25,
@@ -264,6 +271,8 @@ server <- function(input, output, session) {
   
   plot_heatmap <- function() {
     aligned <- perform_alignment()
+    if(is.null(aligned))
+      return(NULL)
     clusters <- get_clusters(aligned)
     
     aligned = aligned[sort(clusters$clusters, index.return=T)$ix,]
@@ -294,7 +303,7 @@ server <- function(input, output, session) {
     meta2 <- input$meta2
     
     if (is.null(meta1) || is.null(meta2)) {
-      meta1 = default_meta1
+      meta1 = default_meta1[1:5,]
       meta2 = default_meta2
     }
     else {
@@ -302,7 +311,13 @@ server <- function(input, output, session) {
       meta2 = read.csv(meta2$datapath, row.names=1)
     }
     
-    return(list("meta1"=meta1, "meta2"=meta2))
+    data = get_data()
+    if(is.null(data))
+      return(NULL)
+    if( (dim(data$mat1)[1] == dim(meta1)[1]) && (dim(data$mat2)[1] == dim(meta2)[1]) )
+      return(list("meta1"=meta1, "meta2"=meta2))
+    showModal(modalDialog("Length of meta and data must match", footer=NULL, easyClose=T))
+    return(NULL)
   })
   
   
@@ -328,6 +343,7 @@ server <- function(input, output, session) {
         corr = diag(dim(mat1)[1])
       }
       else {
+        showModal(modalDialog("Correspondence matrix must be provided", footer=NULL, easyClose=T))
         return(NULL)
       }
     }
@@ -366,22 +382,24 @@ server <- function(input, output, session) {
   observeEvent(input$method, refresh_dimensions())
   
   
-  conditional_sliders <- reactive({
-    # Conditional sliders
-    if (input$knn == 0) {
-      shinyjs::enable(id="kmed")
-      shinyjs::disable(id="d")
-    }
-    else {
-      shinyjs::disable(id="kmed")
-      shinyjs::enable(id="d")
-    }
-  })
-  observeEvent(input$knn, conditional_sliders())
+  # conditional_sliders <- reactive({
+  #   # Conditional sliders
+  #   if (input$knn == 0) {
+  #     shinyjs::enable(id="kmed")
+  #     shinyjs::disable(id="d")
+  #   }
+  #   else {
+  #     shinyjs::disable(id="kmed")
+  #     shinyjs::enable(id="d")
+  #   }
+  # })
+  # observeEvent(input$knn, conditional_sliders())
   
   
   color_col_choices <- reactive({
     meta = get_meta()
+    if(is.null(meta))
+      return(NULL)
     meta1 = meta$meta1
     meta2 = meta$meta2
     
@@ -391,7 +409,13 @@ server <- function(input, output, session) {
         color_cols = append(color_cols, col)
     return(color_cols)
   })
-  observeEvent(color_col_choices(), updateSelectInput(session, "color_col", choices=color_col_choices()))
+  default_color_selection <- reactive({
+    # Pretty hacky, but inconsequential
+    if(identical(color_col_choices(), c("Days", "time", "PAM.Cluster")))
+      return("time")
+    return(NULL)
+  })
+  observeEvent(color_col_choices(), updateSelectInput(session, "color_col", choices=color_col_choices(), selected=default_color_selection()))
   
   conditional_colors <- reactive({
     if (input$show_clusters) {
@@ -406,7 +430,6 @@ server <- function(input, output, session) {
   
   perform_alignment <- reactive({
     # https://stackoverflow.com/a/52741787
-    showModal(modalDialog("Calculating Alignment", footer=NULL, easyClose=T))
     
     data = get_data()
     if(is.null(data))
@@ -421,8 +444,11 @@ server <- function(input, output, session) {
     method = get_method(input$method)
     
     # Perform Alignment
+    showModal(modalDialog("Calculating Alignment", footer=NULL, easyClose=T))
     if(input$use_boma) {
       meta = get_meta()
+      if(is.null(meta))
+        return(NULL)
       meta1 = meta$meta1
       meta2 = meta$meta2
       
@@ -482,20 +508,36 @@ server <- function(input, output, session) {
       ps.tag2 = ps.tag2[(ps.tag2[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
       
       aligned=runMSMA_cor(ps.mat1,ps.mat2,k=1)
+      removeModal()
       
     } else {
-      aligned = ManiNetCluster(
-        mat1,mat2,
-        nameX='sample1',nameY='sample2',
-        corr=XY_corr,
-        d=as.integer(input$d),
-        method=method,
-        k_NN=as.integer(input$knn),
-        k_medoids=as.integer(input$kmed)
-      )
+      # aligned = tryCatch(
+      #   {
+          aligned = ManiNetCluster(
+            mat1,mat2,
+            nameX='sample1',nameY='sample2',
+            corr=XY_corr,
+            d=as.integer(input$d),
+            method=method,
+            k_NN=as.integer(input$knn)
+            # k_medoids=as.integer(input$kmed)
+          )
+          removeModal()
+      #     aligned
+      #   },
+      #   error=function(cond) {
+      #     removeModal()
+      #     showModal(modalDialog(cond, footer=NULL, easyClose=T))
+      #     NULL
+      #   },
+      #   warning=function(cond) {
+      #     removeModal()
+      #     showModal(modalDialog(cond, footer=NULL, easyClose=T))
+      #     NULL
+      #   }
+      # )
     }
     
-    removeModal()
     aligned
   })
   
@@ -532,11 +574,15 @@ server <- function(input, output, session) {
     # Accuracy metrics
     # Get inputs
     meta = get_meta()
+    if(is.null(meta))
+      return(NULL)
     meta1 = meta$meta1
     meta2 = meta$meta2
     
     # Prerequisite data
     aligned_data = perform_alignment()
+    if(is.null(aligned_data))
+      return(NULL)
     source_data = data.frame(aligned_data[aligned_data$data=='sample1',])[,3:(2+input$d)]
     transfer_data = data.frame(aligned_data[aligned_data$data=='sample2',])[,3:(2+input$d)]
     

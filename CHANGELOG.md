@@ -1,3 +1,11 @@
+# 1.3.9
+- Initial direction/scale of plots same
+- Switch default to 'time'
+- Add 'color' annotation to series selection
+- Remove medoids bar
+- Add link to download base dataset
+- Error catching
+
 # 1.3.8
 - Added compatibility for `ShinyApps.io`
 
