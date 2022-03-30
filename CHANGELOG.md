@@ -1,3 +1,8 @@
+# 1.3.10
+- Add color bar and unfinished integrated application
+- Revise certain UI elements
+- Add runtime warnings
+
 # 1.3.9
 - Initial direction/scale of plots same
 - Switch default to 'time'

@@ -7,6 +7,7 @@ library(pdist)
 library(plot3D)
 library(plotly)
 library(plyr)
+library(purrr)
 library(RColorBrewer)
 library(shiny)
 library(shinyjs)
@@ -71,7 +72,8 @@ ui <- fluidPage(
   fluidRow(
     column(4, plotlyOutput("content1")),
     column(4, plotlyOutput("content2")),
-    column(4, plotOutput("heatmap")),
+    column(3, plotOutput("heatmap")),
+    column(1, plotOutput("colorbar")),
   ),
   hr(),
   
@@ -269,7 +271,7 @@ server <- function(input, output, session) {
   }
   
   
-  plot_heatmap <- function() {
+  get_dist <- function() {
     aligned <- perform_alignment()
     if(is.null(aligned))
       return(NULL)
@@ -287,14 +289,51 @@ server <- function(input, output, session) {
     
     s1 = s1[nrow(s1):1,]
     rsc = rsc[length(rsc):1]
-    
     dist = as.matrix(pdist::pdist(s1, s2))
     
-    par(mar=c(5.1,4.1,4.1,4.1), xpd=T)
+    return(list("dist"=dist, "rsc"=rsc, "csc"=csc, "clusters"=clusters))
+  }
+  
+  
+  plot_heatmap <- function() {
+    distance <- get_dist()
+    if(is.null(distance))
+      return(NULL)
+    csc = distance$csc
+    rsc = distance$rsc
+    dist = distance$dist
+    clusters = distance$clusters
+    
+    
+    # layout(t(1:2),widths=c(6,1))
+    # par(mfrow=c(1,2), mar=c(4, 4, 1, .5))
     ramp = colorRampPalette(rev(brewer.pal(9, "Greys")))
-    heatmap(dist, main="Distance", xlab="Dataset 2", ylab="Dataset 1", RowSideColors=rsc, ColSideColors=csc, Colv=NA, Rowv=NA, labCol=F, labRow=F, col=ramp(256))
-    legend("topright", legend=c("close", "mid", "far"), inset = c(0,0), fill=ramp(3))
+    heatmap(dist, main="Alignment Distance", xlab="Dataset 2", ylab="Dataset 1", RowSideColors=rsc, ColSideColors=csc, Colv=NA, Rowv=NA, labCol=F, labRow=F, col=ramp(256))
+    # legend("topright", legend=c("close", "mid", "far"), inset = c(0,0), fill=ramp(3))
     legend("bottomright", legend = paste("Cluster ", unique(clusters$clusters), sep=""), col = unique(clusters$colors), pch=16, inset = c(0,0), xpd = TRUE, horiz = F)
+
+    # par(mar=c(5, 1, 5, 2.5))
+    # n = 20
+    # color=ramp(n)  # rainbow(max(dist), s = 1, v = 1, start = 0, end = 1, alpha = 1)
+    # image(y=0:n,z=t(0:n), col=color[1:9], axes=FALSE, main="Slope", cex.main=.8)
+    # axis(4,cex.axis=0.8,mgp=c(0,.5,0))
+  }
+  
+  
+  plot_colorbar <- function() {  
+    distance <- get_dist()
+    if(is.null(distance))
+      return(NULL)
+    csc = distance$csc
+    rsc = distance$rsc
+    dist = distance$dist
+    
+    n =30
+    color = colorRampPalette(rev(brewer.pal(9, "Greys")))(n)
+    par(mar=c(0,0,0,3))
+    ax_range = seq(from=min(dist), to=max(dist), by=(max(dist) - min(dist))/n)
+    image(y=ax_range,z=t(ax_range), col=color[1:n], axes=FALSE, main="", cex.main=.8)
+    axis(4,cex.axis=0.8,mgp=c(0,.5,0))
   }
   
   
@@ -444,7 +483,7 @@ server <- function(input, output, session) {
     method = get_method(input$method)
     
     # Perform Alignment
-    showModal(modalDialog("Calculating Alignment", footer=NULL, easyClose=T))
+    showModal(modalDialog("Calculating Alignment, could take a few minutes...", footer=NULL, easyClose=T))
     if(input$use_boma) {
       meta = get_meta()
       if(is.null(meta))
@@ -629,6 +668,7 @@ server <- function(input, output, session) {
   output$content1 <- renderPlotly({plot_alignment('sample1', 'Greens')})
   output$content2 <- renderPlotly({plot_alignment('sample2', 'Oranges')})
   output$heatmap <- renderPlot({plot_heatmap()})
+  output$colorbar <- renderPlot({plot_colorbar()})
   # output$gci <- renderTable(data.frame(Gene=c(0,1,2), Contribution=c(0,1,0)))
   
   
