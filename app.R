@@ -132,27 +132,29 @@ ui <- fluidPage(
     ),
     column(4,
       h2("Alignment"),
-      strong("BOMA"),
-      p("For BOMA, it is assumed that columns 'tag', 'fctp', and 'seurat clusters' are provided."),
-      checkboxInput("use_boma", "Use BOMA (Beta)", value=F),
+      checkboxInput("use_boma", "Use BOMA", value=F),
+      selectInput("boma_cluster_method", "BOMA Step 1", choices=c("PAM", "KNN", "Manifold Warping"), selected="KNN"),
+      
+      hr(),
       selectInput("method", "Method", choices=names(alignments), selected="Non-Linear Manifold Alignment"),
       sliderInput("d", "Dimensions", min = 1, max = 20, value = 3),
       sliderInput("knn", "Nearest Neighbors", min = 0, max = 20, value = 3), 
       # sliderInput("kmed", "Medoids", min = 0, max = 20, value = 6),
       # strong("Note:"),
       # p("To use medoids, nearest neighbors must be 0."),
+      
       hr(),
       downloadButton("download", "Download Aligned Data"),
       div(style = "margin-top: 15px"),
       p("Download data as a single CSV using the chosen parameters.  Includes clusters."),
     ),
     column(3,
-      h2("Visualization/Clustering"),
+      h2("Visualization"),
       checkboxInput("show_clusters", "Show Clusters in Plot", value=F),
       selectInput("color_col", "Series Color Column", choices=NULL),
       
       hr(),
-      selectInput("cluster_method", "Method", choices=c("K-Means", "PAM"), selected="PAM"),
+      selectInput("cluster_method", "Clustering Method", choices=c("K-Means", "PAM"), selected="PAM"),
       sliderInput("num_clusters", "Clusters", min = 1, max = 7, value = 4),
       
       # h2("Gene Information"),
@@ -330,9 +332,9 @@ server <- function(input, output, session) {
     
     n =30
     color = colorRampPalette(rev(brewer.pal(9, "Greys")))(n)
-    par(mar=c(0,0,0,3))
+    par(mar=c(7,0,7,4))  # b, l, t, r
     ax_range = seq(from=min(dist), to=max(dist), by=(max(dist) - min(dist))/n)
-    image(y=ax_range,z=t(ax_range), col=color[1:n], axes=FALSE, main="", cex.main=.8)
+    image(y=ax_range,z=t(ax_range), col=color[1:n], axes=FALSE, main="", ylab="", cex.main=.8)
     axis(4,cex.axis=0.8,mgp=c(0,.5,0))
   }
   
@@ -456,6 +458,7 @@ server <- function(input, output, session) {
   })
   observeEvent(color_col_choices(), updateSelectInput(session, "color_col", choices=color_col_choices(), selected=default_color_selection()))
   
+  
   conditional_colors <- reactive({
     if (input$show_clusters) {
       shinyjs::disable(id="color_col")
@@ -465,6 +468,17 @@ server <- function(input, output, session) {
     }
   })
   observeEvent(input$show_clusters, conditional_colors())
+  
+  
+  conditional_boma_clustering <- reactive({
+    if (input$use_boma) {
+      shinyjs::enable(id="boma_cluster_method")
+    }
+    else {
+      shinyjs::disable(id="boma_cluster_method")
+    }
+  })
+  observeEvent(input$use_boma, conditional_boma_clustering())
     
   
   perform_alignment <- reactive({
@@ -484,69 +498,69 @@ server <- function(input, output, session) {
     
     # Perform Alignment
     showModal(modalDialog("Calculating Alignment, could take a few minutes...", footer=NULL, easyClose=T))
-    if(input$use_boma) {
+    if(input$use_boma & F) {
       meta = get_meta()
       if(is.null(meta))
         return(NULL)
       meta1 = meta$meta1
       meta2 = meta$meta2
       
-      form.data1 = mat1
-      form.data2 = mat2
-      form.meta1 = meta1
-      form.meta2 = meta2
-      
-      nTopGenes=15000
-      ##Seurat to normalize & scale data matrix 1
-      #tmp.form=get_form_seurat(t(mat1),sel.meta1,type='COUNTS',hvg=nTopGenes,resolution=10)
-      #form.data1 = tmp.form[[1]]
-      #form.meta1 = tmp.form[[2]]
-      
-      ##Seurat to normalize & scale data matrix 2
-      #tmp.form=get_form_seurat(t(mat2),sel.meta2,type='COUNTS',hvg=nTopGenes,resolution=10)
-      #form.data2 = tmp.form[[1]]
-      #form.meta2 = tmp.form[[2]]
-      
-      ##normalize 
-      #sel.data1 = form.data1[row.names(form.data1) %in% sel.genes,]; sel.data1 = sel.data1[!duplicated(row.names(sel.data1)),]; sel.meta1=form.meta1
-      #sel.data2 = form.data2[row.names(form.data2) %in% sel.genes,]; sel.data2 = sel.data2[!duplicated(row.names(sel.data2)),]; sel.meta2=form.meta2 
-      #log transform
-      exp1 = log(sel.data1+1)
-      exp2 = log(sel.data2+1)
-      #reorder
-      exp1 = exp1[order(row.names(exp1)),order(sel.meta1$time)];sel.meta1=sel.meta1[order(sel.meta1$time),]
-      exp2 = exp2[order(row.names(exp2)),order(sel.meta2$time)];sel.meta2=sel.meta2[order(sel.meta2$time),]
-      
-      #print('generating pseudo cells')
-      ##pcells for sample1
-      sel.meta1$tag2 = paste(sel.meta1$tag,sel.meta1$seurat_clusters,sel.meta1$fctp,sep='-')
-      pcell1.info = pcell.from.fctp_seurat(exp1,sel.meta1)
-      
-      ##pcells for sample2
-      sel.meta2$tag2 = paste(sel.meta2$tag,sel.meta2$seurat_clusters,sel.meta2$fctp,sep='-')
-      sel.meta2$fctp[is.na(sel.meta2$fctp)] = 'Unknown' 
-      pcell2.info = pcell.from.fctp_seurat(exp2,sel.meta2)
-      
-      ps.mat1=pcell1.info[[1]]
-      ps.tag1 = pcell1.info[[2]];
-      ps.belong1 = pcell1.info[[3]]
-      ps.gex1 = pcell1.info[[4]]
-      #ps.sc.time1 = tmeta$time
-      #ps.sc.ctp1 = data.frame('orig_ctp'=tmeta$WGCNAcluster, 'ctp'=tmeta$ctp)
-      ps.mat2=pcell2.info[[1]]
-      ps.tag2 = pcell2.info[[2]]
-      ps.belong2 = pcell2.info[[3]]
-      ps.gex2 = pcell2.info[[4]]
-      
-      # print('performing alignment')
-      ##focus on overlapped cell types between sample sources only!!!!!!!!!!!!!!!##############
-      ps.mat01=ps.mat1;ps.mat02=ps.mat2;ps.tag01=ps.tag1;ps.tag02=ps.tag2
-      ps.mat1 = ps.mat1[(ps.tag1[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
-      ps.tag1 = ps.tag1[(ps.tag1[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
-      ps.mat2 = ps.mat2[(ps.tag2[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
-      ps.tag2 = ps.tag2[(ps.tag2[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
-      
-      aligned=runMSMA_cor(ps.mat1,ps.mat2,k=1)
+      # form.data1 = mat1
+      # form.data2 = mat2
+      # form.meta1 = meta1
+      # form.meta2 = meta2
+      # 
+      # nTopGenes=15000
+      # ##Seurat to normalize & scale data matrix 1
+      # #tmp.form=get_form_seurat(t(mat1),sel.meta1,type='COUNTS',hvg=nTopGenes,resolution=10)
+      # #form.data1 = tmp.form[[1]]
+      # #form.meta1 = tmp.form[[2]]
+      # 
+      # ##Seurat to normalize & scale data matrix 2
+      # #tmp.form=get_form_seurat(t(mat2),sel.meta2,type='COUNTS',hvg=nTopGenes,resolution=10)
+      # #form.data2 = tmp.form[[1]]
+      # #form.meta2 = tmp.form[[2]]
+      # 
+      # ##normalize 
+      # #sel.data1 = form.data1[row.names(form.data1) %in% sel.genes,]; sel.data1 = sel.data1[!duplicated(row.names(sel.data1)),]; sel.meta1=form.meta1
+      # #sel.data2 = form.data2[row.names(form.data2) %in% sel.genes,]; sel.data2 = sel.data2[!duplicated(row.names(sel.data2)),]; sel.meta2=form.meta2 
+      # #log transform
+      # exp1 = log(sel.data1+1)
+      # exp2 = log(sel.data2+1)
+      # #reorder
+      # exp1 = exp1[order(row.names(exp1)),order(sel.meta1$time)];sel.meta1=sel.meta1[order(sel.meta1$time),]
+      # exp2 = exp2[order(row.names(exp2)),order(sel.meta2$time)];sel.meta2=sel.meta2[order(sel.meta2$time),]
+      # 
+      # #print('generating pseudo cells')
+      # ##pcells for sample1
+      # sel.meta1$tag2 = paste(sel.meta1$tag,sel.meta1$seurat_clusters,sel.meta1$fctp,sep='-')
+      # pcell1.info = pcell.from.fctp_seurat(exp1,sel.meta1)
+      # 
+      # ##pcells for sample2
+      # sel.meta2$tag2 = paste(sel.meta2$tag,sel.meta2$seurat_clusters,sel.meta2$fctp,sep='-')
+      # sel.meta2$fctp[is.na(sel.meta2$fctp)] = 'Unknown' 
+      # pcell2.info = pcell.from.fctp_seurat(exp2,sel.meta2)
+      # 
+      # ps.mat1=pcell1.info[[1]]
+      # ps.tag1 = pcell1.info[[2]];
+      # ps.belong1 = pcell1.info[[3]]
+      # ps.gex1 = pcell1.info[[4]]
+      # #ps.sc.time1 = tmeta$time
+      # #ps.sc.ctp1 = data.frame('orig_ctp'=tmeta$WGCNAcluster, 'ctp'=tmeta$ctp)
+      # ps.mat2=pcell2.info[[1]]
+      # ps.tag2 = pcell2.info[[2]]
+      # ps.belong2 = pcell2.info[[3]]
+      # ps.gex2 = pcell2.info[[4]]
+      # 
+      # # print('performing alignment')
+      # ##focus on overlapped cell types between sample sources only!!!!!!!!!!!!!!!##############
+      # ps.mat01=ps.mat1;ps.mat02=ps.mat2;ps.tag01=ps.tag1;ps.tag02=ps.tag2
+      # ps.mat1 = ps.mat1[(ps.tag1[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
+      # ps.tag1 = ps.tag1[(ps.tag1[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
+      # ps.mat2 = ps.mat2[(ps.tag2[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
+      # ps.tag2 = ps.tag2[(ps.tag2[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
+      # 
+      # aligned=runMSMA_cor(ps.mat1,ps.mat2,k=1)
       removeModal()
       
     } else {

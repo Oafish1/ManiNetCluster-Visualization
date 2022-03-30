@@ -1,3 +1,6 @@
+# 1.3.11
+- Add BOMA UI framework and reactive elements
+
 # 1.3.10
 - Add color bar and unfinished integrated application
 - Revise certain UI elements
