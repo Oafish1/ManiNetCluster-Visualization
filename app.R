@@ -507,10 +507,10 @@ server <- function(input, output, session) {
   
   conditional_boma_clustering <- reactive({
     if (input$use_boma) {
-      shinyjs::enable(id="boma_cluster_method")
+      shinyjs::enable(id="boma_method")
     }
     else {
-      shinyjs::disable(id="boma_cluster_method")
+      shinyjs::disable(id="boma_method")
     }
   })
   observeEvent(input$use_boma, conditional_boma_clustering())

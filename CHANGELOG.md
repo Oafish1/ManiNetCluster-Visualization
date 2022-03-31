@@ -1,5 +1,6 @@
 # 1.3.12
 - BOMA rough implementation
+- Fix UI bugs
 
 # 1.3.11
 - Add BOMA UI framework and reactive elements
