@@ -55,6 +55,16 @@ names(alignments) = c(
   "Non-Linear Manifold Alignment",
   "Non-Linear Manifold Warping"
 )
+boma_alignments = c(
+  "dtw",
+  "manifold warping",
+  "nonlinear manifold warp"
+)
+names(boma_alignments) = c(
+  "DTW", 
+  "Manifold Warping",
+  "Non-Linear Manifold Warping"
+)
 
 # Options
 options(shiny.maxRequestSize=0)
@@ -133,7 +143,7 @@ ui <- fluidPage(
     column(4,
       h2("Alignment"),
       checkboxInput("use_boma", "Use BOMA", value=F),
-      selectInput("boma_cluster_method", "BOMA Step 1", choices=c("PAM", "KNN", "Manifold Warping"), selected="KNN"),
+      selectInput("boma_method", "BOMA Step 1", choices=names(boma_alignments), selected="DTW"),  # asddf: add KNN
       
       hr(),
       selectInput("method", "Method", choices=names(alignments), selected="Non-Linear Manifold Alignment"),
@@ -155,7 +165,7 @@ ui <- fluidPage(
       
       hr(),
       selectInput("cluster_method", "Clustering Method", choices=c("K-Means", "PAM"), selected="PAM"),
-      sliderInput("num_clusters", "Clusters", min = 1, max = 7, value = 4),
+      sliderInput("num_clusters", "Clusters", min = 1, max = 14, value = 4),
       
       # h2("Gene Information"),
       # em("Placeholder:"),
@@ -182,6 +192,15 @@ server <- function(input, output, session) {
   }
   
   
+  get_boma_method <- function(method_code) {
+    for (i in 1:length(boma_alignments)) {
+      if (method_code == names(boma_alignments)[i])
+        return(boma_alignments[i])
+    }
+    return(NULL)
+  }
+  
+  
   get_clusters <- function(df, default_color="green", normal_colors=F, num_colors=8) {
     # Generate clusters / Get colors
     working_data = df[,3:(2+input$d)]
@@ -202,6 +221,22 @@ server <- function(input, output, session) {
     else
       validate(need(F, "Invalid clustering method"))
     return (list("clusters"=clusters, "colors"=colors[clusters]))
+  }
+  
+  
+  get_raw_clusters <- function(df) {
+    # Generate clusters / Get colors
+    working_data = df
+    # Max 7 colors
+    colors = c("blue","green","yellow","orange","red","pink","purple")
+    
+    if (input$cluster_method == "K-Means")
+      clusters = kmeans(working_data, input$num_clusters)$cluster
+    else if (input$cluster_method == "PAM")
+      clusters = pam(working_data, input$num_clusters)$clustering
+    else
+      validate(need(F, "Invalid clustering method"))
+    return (clusters)
   }
   
   
@@ -483,7 +518,6 @@ server <- function(input, output, session) {
   
   perform_alignment <- reactive({
     # https://stackoverflow.com/a/52741787
-    
     data = get_data()
     if(is.null(data))
       return(NULL)
@@ -491,79 +525,71 @@ server <- function(input, output, session) {
     mat2 = data$mat2
     corr = data$corr
     
-    XY_corr = Correspondence(matrix=corr)
-    
     # Get vars
     method = get_method(input$method)
+    boma_method = get_boma_method(input$boma_method)
     
     # Perform Alignment
-    showModal(modalDialog("Calculating Alignment, could take a few minutes...", footer=NULL, easyClose=T))
-    if(input$use_boma & F) {
+    showModal(modalDialog("Calculating alignment, could take a few minutes...", footer=NULL, easyClose=T))
+    if(input$use_boma) {
       meta = get_meta()
       if(is.null(meta))
         return(NULL)
       meta1 = meta$meta1
       meta2 = meta$meta2
       
-      # form.data1 = mat1
-      # form.data2 = mat2
-      # form.meta1 = meta1
-      # form.meta2 = meta2
-      # 
-      # nTopGenes=15000
-      # ##Seurat to normalize & scale data matrix 1
-      # #tmp.form=get_form_seurat(t(mat1),sel.meta1,type='COUNTS',hvg=nTopGenes,resolution=10)
-      # #form.data1 = tmp.form[[1]]
-      # #form.meta1 = tmp.form[[2]]
-      # 
-      # ##Seurat to normalize & scale data matrix 2
-      # #tmp.form=get_form_seurat(t(mat2),sel.meta2,type='COUNTS',hvg=nTopGenes,resolution=10)
-      # #form.data2 = tmp.form[[1]]
-      # #form.meta2 = tmp.form[[2]]
-      # 
-      # ##normalize 
-      # #sel.data1 = form.data1[row.names(form.data1) %in% sel.genes,]; sel.data1 = sel.data1[!duplicated(row.names(sel.data1)),]; sel.meta1=form.meta1
-      # #sel.data2 = form.data2[row.names(form.data2) %in% sel.genes,]; sel.data2 = sel.data2[!duplicated(row.names(sel.data2)),]; sel.meta2=form.meta2 
-      # #log transform
-      # exp1 = log(sel.data1+1)
-      # exp2 = log(sel.data2+1)
-      # #reorder
-      # exp1 = exp1[order(row.names(exp1)),order(sel.meta1$time)];sel.meta1=sel.meta1[order(sel.meta1$time),]
-      # exp2 = exp2[order(row.names(exp2)),order(sel.meta2$time)];sel.meta2=sel.meta2[order(sel.meta2$time),]
-      # 
-      # #print('generating pseudo cells')
-      # ##pcells for sample1
-      # sel.meta1$tag2 = paste(sel.meta1$tag,sel.meta1$seurat_clusters,sel.meta1$fctp,sep='-')
-      # pcell1.info = pcell.from.fctp_seurat(exp1,sel.meta1)
-      # 
-      # ##pcells for sample2
-      # sel.meta2$tag2 = paste(sel.meta2$tag,sel.meta2$seurat_clusters,sel.meta2$fctp,sep='-')
-      # sel.meta2$fctp[is.na(sel.meta2$fctp)] = 'Unknown' 
-      # pcell2.info = pcell.from.fctp_seurat(exp2,sel.meta2)
-      # 
-      # ps.mat1=pcell1.info[[1]]
-      # ps.tag1 = pcell1.info[[2]];
-      # ps.belong1 = pcell1.info[[3]]
-      # ps.gex1 = pcell1.info[[4]]
-      # #ps.sc.time1 = tmeta$time
-      # #ps.sc.ctp1 = data.frame('orig_ctp'=tmeta$WGCNAcluster, 'ctp'=tmeta$ctp)
-      # ps.mat2=pcell2.info[[1]]
-      # ps.tag2 = pcell2.info[[2]]
-      # ps.belong2 = pcell2.info[[3]]
-      # ps.gex2 = pcell2.info[[4]]
-      # 
-      # # print('performing alignment')
-      # ##focus on overlapped cell types between sample sources only!!!!!!!!!!!!!!!##############
-      # ps.mat01=ps.mat1;ps.mat02=ps.mat2;ps.tag01=ps.tag1;ps.tag02=ps.tag2
-      # ps.mat1 = ps.mat1[(ps.tag1[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
-      # ps.tag1 = ps.tag1[(ps.tag1[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
-      # ps.mat2 = ps.mat2[(ps.tag2[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
-      # ps.tag2 = ps.tag2[(ps.tag2[,4] %in% c('Astro','EN','IN','IPC','OPC','RG')),]
-      # 
-      # aligned=runMSMA_cor(ps.mat1,ps.mat2,k=1)
+      # Clustering
+      # asdf: Replace with proprietary clustering interface
+      clusters1 = get_raw_clusters(mat1)  # asddf: Use on both matrices, refer to text
+      clusters2 = get_raw_clusters(mat2)
+      medoids1 = mat1[0,]
+      medoids2 = mat2[0,]
+      for (cluster_id in unique(clusters1)) {
+        filtered = mat1[clusters1==cluster_id,]
+        if (is.null(dim(filtered)))
+          filtered = t(as.data.frame(filtered))
+        medoids1 = rbind(medoids1, colMeans(filtered))
+      }
+      for (cluster_id in unique(clusters2)) {
+        filtered = mat2[clusters2==cluster_id,]
+        if (is.null(dim(filtered)))
+          filtered = t(as.data.frame(filtered))
+        medoids2 = rbind(medoids2, colMeans(filtered))
+      }
+      
+      # Global alignment
+      aligned_medoids = ManiNetCluster(
+        medoids1, medoids2,
+        nameX='sample1', nameY='sample2',
+        corr=Correspondence(matrix=diag(input$num_clusters)),  # asddf: refer to paper
+        d=as.integer(20),  # asddf: Make user-selectable
+        method=boma_method,
+        k_NN=as.integer(3),  # asddf: Make user-selectable
+        k_medoids=as.integer(3)
+        # k_medoids=as.integer(input$kmed)
+      )
+      aligned_medoids1 = aligned_medoids[aligned_medoids$data=='sample1', 3:ncol(aligned_medoids)]
+      aligned_medoids2 = aligned_medoids[aligned_medoids$data=='sample2', 3:ncol(aligned_medoids)]
+      dist = as.matrix(pdist::pdist(aligned_medoids1, aligned_medoids2))
+      corr = 1/(1+dist[clusters1, clusters2])  # asdf: Refer to paper
+      corr = Correspondence(matrix=corr)
+      
+      # Local alignment
+      aligned = ManiNetCluster(
+        mat1,mat2,
+        nameX='sample1',nameY='sample2',
+        corr=corr,
+        d=as.integer(input$d),
+        method=method,
+        k_NN=as.integer(input$knn),
+        k_medoids=as.integer(3)
+        # k_medoids=as.integer(input$kmed)
+      )
       removeModal()
       
     } else {
+      XY_corr = Correspondence(matrix=corr)
+      
       # aligned = tryCatch(
       #   {
           aligned = ManiNetCluster(
@@ -572,7 +598,8 @@ server <- function(input, output, session) {
             corr=XY_corr,
             d=as.integer(input$d),
             method=method,
-            k_NN=as.integer(input$knn)
+            k_NN=as.integer(input$knn),
+            k_medoids=as.integer(3)
             # k_medoids=as.integer(input$kmed)
           )
           removeModal()
