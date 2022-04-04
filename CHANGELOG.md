@@ -1,3 +1,13 @@
+# 1.4.0
+- Helper text revisions
+- Implement pairwise distance
+- Implement quick dataset loading framework
+- Legend changes
+- Moved distance heatmap
+- Properly implement BOMA sorting method
+- Properly implement DTW method
+- Revised and compressed layout
+
 # 1.3.12
 - BOMA rough implementation
 - Fix UI bugs

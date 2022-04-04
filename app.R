@@ -2,6 +2,7 @@
 # Libraries
 library(class)
 library(cluster)
+library(dtw)
 library(htmlwidgets)
 library(pdist)
 library(plot3D)
@@ -11,8 +12,6 @@ library(purrr)
 library(RColorBrewer)
 library(shiny)
 library(shinyjs)
-
-source('./boma/func.r')
 
 # Set up reticulate (https://github.com/ranikay/shiny-reticulate-app)
 # Requires python 3
@@ -31,14 +30,14 @@ reticulate::use_virtualenv(virtualenv_dir, required=T)
 reticulate::source_python('./maniNetCluster/pyManifold.py')
 
 # Defaults
-default_meta1 = read.csv("./data/meta1.csv", row.names=1)
-default_meta2 = read.csv("./data/meta2.csv", row.names=1)
-default_mat1 = as.matrix(read.csv("./data/mat1.csv", row.names=1))
-default_mat2 = as.matrix(read.csv("./data/mat2.csv", row.names=1))
-default_corr = as.matrix(read.csv("./data/corr.csv", row.names=1))
-
-rownames(default_meta2) = default_meta2$SampleID
-default_meta2 = default_meta2[, colnames(default_meta2) !='SampleID']
+# default_meta1 = read.csv("./data/meta1.csv", row.names=1)
+# default_meta2 = read.csv("./data/meta2.csv", row.names=1)
+# default_mat1 = as.matrix(read.csv("./data/mat1.csv", row.names=1))
+# default_mat2 = as.matrix(read.csv("./data/mat2.csv", row.names=1))
+# default_corr = as.matrix(read.csv("./data/corr.csv", row.names=1))
+# 
+# rownames(default_meta2) = default_meta2$SampleID
+# default_meta2 = default_meta2[, colnames(default_meta2) !='SampleID']
 
 # CTW returns only two dim for some reason?
 alignments = c(
@@ -56,14 +55,21 @@ names(alignments) = c(
   "Non-Linear Manifold Warping"
 )
 boma_alignments = c(
-  "dtw",
-  "manifold warping",
-  "nonlinear manifold warp"
+  "dtw"
+  # asddf: Add KNN
 )
 names(boma_alignments) = c(
-  "DTW", 
-  "Manifold Warping",
-  "Non-Linear Manifold Warping"
+  "Dynamic Time Warping"
+)
+datasets = c(
+  "None",
+  "./data/default1/",
+  "./data/default2/"
+)
+names(datasets) = c(
+  "Custom",
+  "Default 1",
+  "Default 2"
 )
 
 # Options
@@ -75,39 +81,45 @@ ui <- fluidPage(
   title="Dataset Alignment Applet",
   
   # Main plot
-  # asddf: Add interactive plotting
   useShinyjs(),
   h2("Dataset Alignment Applet"),
-  textOutput("warnings"),
+  # textOutput("warnings"),
   fluidRow(
-    column(4, plotlyOutput("content1")),
-    column(4, plotlyOutput("content2")),
-    column(3, plotOutput("heatmap")),
-    column(1, plotOutput("colorbar")),
+    column(6, plotlyOutput("content1")),
+    column(6, plotlyOutput("content2")),
   ),
   hr(),
   
   # UI
   fluidRow(
-    column(5,
+    column(4,
       h2("Upload"),
       strong("Row and column labels are expected in all files.  All files are
         also assumed to be ordered similarly (by sample).  Default data can be
         found", a("here", href="https://github.com/Oafish1/ManiNetCluster-Visualization/tree/main/data")),
       
       hr(),
+      fluidRow(
+        column(6,
+               selectInput("custom_mat1", "Replace first dataset with...",
+                           choices=names(datasets), selected="Default 1")),
+        column(6,
+               selectInput("custom_mat2", "Replace second dataset with...",
+                           choices=names(datasets), selected="Default 2"))
+      ),
+      
+      hr(),
       div(style="display:inline-block;margin-bottom:-20px",
         fluidRow(
         column(6,
-          fileInput("mat1", NULL, buttonLabel="First Dataset")
-        ),
+          fileInput("mat1", NULL, buttonLabel="First Dataset")),
         column(6,
-          fileInput("mat2", NULL, buttonLabel="Second Dataset")
-        ),
+          fileInput("mat2", NULL, buttonLabel="Second Dataset")),
       )),
       fluidRow(
         column(8, p("Data should be of dimension (samples x features) in CSV format. ",
-                    "Assumed to be pre-normalized.")),
+                    "Assumed to be pre-normalized.  For use with BOMA, features in each",
+                    "dataset should be the same.")),
         column(4, img(src='data.png', align = "left", width=80)),
       ),
       
@@ -123,7 +135,8 @@ ui <- fluidPage(
       )),
       fluidRow(
         column(8, p("Metadata should be ordered similarly to dataset data in CSV format. ",
-         "One column may be chosen as the basis for point coloring in the scatterplot. ",
+         "Two columns may be chosen as the basis for point coloring in the scatterplot and",
+         "BOMA ordering. ",
          "All other columns are assumed to be categorical and are used for error reporting.")),
         column(4, img(src='metadata.png', align = "left", width=80)),
       ),
@@ -136,35 +149,53 @@ ui <- fluidPage(
         p("Correspondence matrix (samples1 x samples2) should be of CSV format. ",
           "Meant to represent inter-dataset correspondence and can be calculated",
           "in a variety of ways.  If aligned and no CSV is provided, will default",
-          "to the identity matrix.")),
+          "to the identity matrix. ", strong("BOMA does not use this."))),
       column(4, img(src='corr.png', align = "left", width=80)),
       ),
     ),
     column(4,
       h2("Alignment"),
-      checkboxInput("use_boma", "Use BOMA", value=F),
-      selectInput("boma_method", "BOMA Step 1", choices=names(boma_alignments), selected="DTW"),  # asddf: add KNN
+      checkboxInput("use_boma", "Use BOMA", value=T),
+      fluidRow(
+        column(6,
+               selectInput("boma_method", "BOMA Step 1", choices=names(boma_alignments), selected="DTW")),
+        column(6,
+               selectInput("boma_col", "Boma Sorting Column", choices=NULL)),
+      ),
       
       hr(),
       selectInput("method", "Method", choices=names(alignments), selected="Non-Linear Manifold Alignment"),
-      sliderInput("d", "Dimensions", min = 1, max = 20, value = 3),
-      sliderInput("knn", "Nearest Neighbors", min = 0, max = 20, value = 3), 
-      # sliderInput("kmed", "Medoids", min = 0, max = 20, value = 6),
-      # strong("Note:"),
-      # p("To use medoids, nearest neighbors must be 0."),
+      fluidRow(
+        column(4,
+               sliderInput("d", "Dimensions", min = 1, max = 20, value = 3)),
+        column(4,
+               sliderInput("knn", "Nearest Neighbors", min = 0, max = 20, value = 3), ),
+        column(4,
+               sliderInput("kmed", "Medoids", min = 0, max = 20, value = 6),),
+      ),
       
       hr(),
-      downloadButton("download", "Download Aligned Data"),
-      div(style = "margin-top: 15px"),
-      p("Download data as a single CSV using the chosen parameters.  Includes clusters."),
+      fluidRow(
+        column(6,
+               downloadButton("download", "Download Aligned Data"),),
+        column(6,
+               p("Download data as a single CSV using the chosen parameters.  Includes clusters."),),
+      ),
+      
+      hr(),
+      plotOutput("statistics", height=200),
+      em("Zero values are assumed to be errant and are excluded. ",
+         "Labels are extracted from columns present in both metadata files. "),
     ),
-    column(3,
+    column(4,
       h2("Visualization"),
       checkboxInput("show_clusters", "Show Clusters in Plot", value=F),
-      selectInput("color_col", "Series Color Column", choices=NULL),
-      
-      hr(),
-      selectInput("cluster_method", "Clustering Method", choices=c("K-Means", "PAM"), selected="PAM"),
+      fluidRow(
+        column(6,
+               selectInput("color_col", "Series Color Column", choices=NULL)),
+        column(6,
+               selectInput("cluster_method", "Clustering Method", choices=c("K-Means", "PAM"), selected="PAM")),
+      ),
       sliderInput("num_clusters", "Clusters", min = 1, max = 14, value = 4),
       
       # h2("Gene Information"),
@@ -172,10 +203,10 @@ ui <- fluidPage(
       # tableOutput("gci"),
       
       hr(),
-      plotOutput("label_transfer_accuracy", height=200),
-      em("Labels are taken from columns present in both metadata files.  zero values",
-        "are assumed to be errant and are excluded.  Case-sensitive.  If no",
-        "barplot is shown, no nonzero labels were detected.")
+      fluidRow(
+        column(9, plotOutput("heatmap")),
+        column(3, plotOutput("colorbar")),
+      ),
     ),
   ),
   
@@ -196,6 +227,15 @@ server <- function(input, output, session) {
     for (i in 1:length(boma_alignments)) {
       if (method_code == names(boma_alignments)[i])
         return(boma_alignments[i])
+    }
+    return(NULL)
+  }
+  
+  
+  get_custom_dataset <- function(method_code) {
+    for (i in 1:length(datasets)) {
+      if (method_code == names(datasets)[i])
+        return(datasets[i])
     }
     return(NULL)
   }
@@ -258,7 +298,10 @@ server <- function(input, output, session) {
     if(is.null(df2))
       return(NULL)
     # Assumes ordering from NLMA
-    df2$time = c(meta1[input$color_col][,1],meta2[input$color_col][,1])
+    if (is.null(tryCatch({meta1[,input$color_col]; meta2[,input$color_col]},
+                  error=function(cond) {return(NULL)})))
+      return(NULL)
+    df2$time = c(meta1[,input$color_col],meta2[,input$color_col])
     res = data.frame(df2[df2$data==sample_label,])
     res0 = data.frame(df2)
     clusters = get_clusters(df2, default_color, !input$show_clusters, length(unique(res$time)))
@@ -341,7 +384,6 @@ server <- function(input, output, session) {
     dist = distance$dist
     clusters = distance$clusters
     
-    
     # layout(t(1:2),widths=c(6,1))
     # par(mfrow=c(1,2), mar=c(4, 4, 1, .5))
     ramp = colorRampPalette(rev(brewer.pal(9, "Greys")))
@@ -369,7 +411,7 @@ server <- function(input, output, session) {
     color = colorRampPalette(rev(brewer.pal(9, "Greys")))(n)
     par(mar=c(7,0,7,4))  # b, l, t, r
     ax_range = seq(from=min(dist), to=max(dist), by=(max(dist) - min(dist))/n)
-    image(y=ax_range,z=t(ax_range), col=color[1:n], axes=FALSE, main="", ylab="", cex.main=.8)
+    image(y=ax_range,z=t(ax_range), col=color[1:n], axes=FALSE, main="Distance\nLegend", ylab="", cex.main=.8)
     axis(4,cex.axis=0.8,mgp=c(0,.5,0))
   }
   
@@ -378,14 +420,19 @@ server <- function(input, output, session) {
     meta1 <- input$meta1
     meta2 <- input$meta2
     
-    if (is.null(meta1) || is.null(meta2)) {
-      meta1 = default_meta1
-      meta2 = default_meta2
-    }
-    else {
+    # Load uploaded datasets
+    if (!is.null(meta1))
       meta1 = read.csv(meta1$datapath, row.names=1)
+    if (!is.null(meta2))
       meta2 = read.csv(meta2$datapath, row.names=1)
-    }
+    
+    # Load custom datasets
+    custom_dataset1 = get_custom_dataset(input$custom_mat1)
+    if (custom_dataset1 != "None")
+      meta1 = read.csv(paste(custom_dataset1, "meta.csv", sep=""), row.names=1)
+    custom_dataset2 = get_custom_dataset(input$custom_mat2)
+    if (custom_dataset2 != "None")
+      meta2 = read.csv(paste(custom_dataset2, "meta.csv", sep=""), row.names=1)
     
     data = get_data()
     if(is.null(data))
@@ -402,27 +449,38 @@ server <- function(input, output, session) {
     mat2 <- input$mat2
     corr <- input$corr
     
-    if (is.null(mat1) || is.null(mat2)) {
-      mat1 = default_mat1
-      mat2 = default_mat2
-      corr = default_corr
-    }
-    else {
+    # Load uploaded datasets
+    if (!is.null(mat1))
       mat1 <- as.matrix(read.csv(mat1$datapath, row.names=1))
+    if (!is.null(mat2))
       mat2 <- as.matrix(read.csv(mat2$datapath, row.names=1))
-      
-      # Use KNN as correspondence if applicable
-      if (!is.null(corr)) {
-        corr <- as.matrix(read.csv(corr$datapath, row.names=1))
-      }
-      else if (dim(mat1)[1] == dim(mat2)[1]) {
-        corr = diag(dim(mat1)[1])
-      }
-      else {
-        showModal(modalDialog("Correspondence matrix must be provided", footer=NULL, easyClose=T))
-        return(NULL)
-      }
+    
+    # Load custom datasets
+    custom_dataset1 = get_custom_dataset(input$custom_mat1)
+    if (custom_dataset1 != "None")
+      mat1 = read.csv(paste(custom_dataset1, "mat.csv", sep=""), row.names=1)
+    custom_dataset2 = get_custom_dataset(input$custom_mat2)
+    if (custom_dataset2 != "None")
+      mat2 = read.csv(paste(custom_dataset2, "mat.csv", sep=""), row.names=1)
+    
+    # Exception handling
+    if (is.null(mat1) || is.null(mat2)) {
+      removeModal()
+      showModal(modalDialog("No dataset uploaded", footer=NULL, easyClose=T))
+      return (NULL)
     }
+      
+    # Calculate correspondence if not provided
+    if (!is.null(corr))
+      corr <- as.matrix(read.csv(corr$datapath, row.names=1))
+    else if (dim(mat1)[1] == dim(mat2)[1])
+      corr = diag(dim(mat1)[1])
+    else if (!input$use_boma) {
+      showModal(modalDialog("Correspondence matrix must be provided unless BOMA is used",
+                            footer=NULL, easyClose=T))
+      return(NULL)
+    } else
+      corr = NULL
     
     return(list("mat1"=mat1, "mat2"=mat2, "corr"=corr))
   })
@@ -436,7 +494,7 @@ server <- function(input, output, session) {
       "cca" = c(),
       "linear manifold" = c("knn"),
       "manifold warping" = c("knn"),
-      "nonlinear manifold aln" = c("knn"),
+      "nonlinear manifold aln" = c("knn", "kmed"),
       "nonlinear manifold warp" = c("knn")
     )
     
@@ -453,26 +511,33 @@ server <- function(input, output, session) {
       shinyjs::disable(id="d")
       dimensions = input$kmed
     }
+    
+    # Disable corr upload with BOMA
+    # if (input$use_boma)
+    #   shinyjs::disable(id="corr")
+    # else
+    #   shinyjs::enable(id="corr")
+    
     return(dimensions)
   })
   observeEvent(input$method, refresh_dimensions())
   
   
-  # conditional_sliders <- reactive({
-  #   # Conditional sliders
-  #   if (input$knn == 0) {
-  #     shinyjs::enable(id="kmed")
-  #     shinyjs::disable(id="d")
-  #   }
-  #   else {
-  #     shinyjs::disable(id="kmed")
-  #     shinyjs::enable(id="d")
-  #   }
-  # })
+  conditional_sliders <- reactive({
+    # Conditional sliders
+    if (input$knn == 0) {
+      shinyjs::enable(id="kmed")
+      shinyjs::disable(id="d")
+    }
+    else {
+      shinyjs::disable(id="kmed")
+      shinyjs::enable(id="d")
+    }
+  })
   # observeEvent(input$knn, conditional_sliders())
   
   
-  color_col_choices <- reactive({
+  meta_col_choices <- reactive({
     meta = get_meta()
     if(is.null(meta))
       return(NULL)
@@ -485,13 +550,28 @@ server <- function(input, output, session) {
         color_cols = append(color_cols, col)
     return(color_cols)
   })
-  default_color_selection <- reactive({
+  meta_col_choices_none <- reactive({
+    meta = get_meta()
+    if(is.null(meta))
+      return(NULL)
+    meta1 = meta$meta1
+    meta2 = meta$meta2
+    
+    color_cols = c("None")
+    for(col in colnames(meta1))
+      if(col %in% colnames(meta2))
+        color_cols = append(color_cols, col)
+    return(color_cols)
+  })
+  default_col_selection <- reactive({
     # Pretty hacky, but inconsequential
-    if(identical(color_col_choices(), c("Days", "time", "PAM.Cluster")))
+    if(identical(meta_col_choices(), c("Days", "time", "PAM.Cluster"))
+       || identical(meta_col_choices(), c("None", "Days", "time", "PAM.Cluster")))
       return("time")
     return(NULL)
   })
-  observeEvent(color_col_choices(), updateSelectInput(session, "color_col", choices=color_col_choices(), selected=default_color_selection()))
+  observeEvent(meta_col_choices(), updateSelectInput(session, "color_col", choices=meta_col_choices(), selected=default_col_selection()))
+  observeEvent(meta_col_choices_none(), updateSelectInput(session, "boma_col", choices=meta_col_choices_none(), selected=default_col_selection()))
   
   
   conditional_colors <- reactive({
@@ -532,93 +612,66 @@ server <- function(input, output, session) {
     # Perform Alignment
     showModal(modalDialog("Calculating alignment, could take a few minutes...", footer=NULL, easyClose=T))
     if(input$use_boma) {
+      # Load metadata
       meta = get_meta()
       if(is.null(meta))
         return(NULL)
       meta1 = meta$meta1
       meta2 = meta$meta2
       
-      # Clustering
-      # asdf: Replace with proprietary clustering interface
-      clusters1 = get_raw_clusters(mat1)  # asddf: Use on both matrices, refer to text
-      clusters2 = get_raw_clusters(mat2)
-      medoids1 = mat1[0,]
-      medoids2 = mat2[0,]
-      for (cluster_id in unique(clusters1)) {
-        filtered = mat1[clusters1==cluster_id,]
-        if (is.null(dim(filtered)))
-          filtered = t(as.data.frame(filtered))
-        medoids1 = rbind(medoids1, colMeans(filtered))
-      }
-      for (cluster_id in unique(clusters2)) {
-        filtered = mat2[clusters2==cluster_id,]
-        if (is.null(dim(filtered)))
-          filtered = t(as.data.frame(filtered))
-        medoids2 = rbind(medoids2, colMeans(filtered))
+      # Reorder data
+      if (input$boma_col == "")
+        return(NULL)
+      else if (input$boma_col != "None") {
+        mat1 = mat1[order(meta1[,input$boma_col]),]
+        mat2 = mat2[order(meta2[,input$boma_col]),]
       }
       
       # Global alignment
-      aligned_medoids = ManiNetCluster(
-        medoids1, medoids2,
-        nameX='sample1', nameY='sample2',
-        corr=Correspondence(matrix=diag(input$num_clusters)),  # asddf: refer to paper
-        d=as.integer(20),  # asddf: Make user-selectable
-        method=boma_method,
-        k_NN=as.integer(3),  # asddf: Make user-selectable
-        k_medoids=as.integer(3)
-        # k_medoids=as.integer(input$kmed)
-      )
-      aligned_medoids1 = aligned_medoids[aligned_medoids$data=='sample1', 3:ncol(aligned_medoids)]
-      aligned_medoids2 = aligned_medoids[aligned_medoids$data=='sample2', 3:ncol(aligned_medoids)]
-      dist = as.matrix(pdist::pdist(aligned_medoids1, aligned_medoids2))
-      corr = 1/(1+dist[clusters1, clusters2])  # asdf: Refer to paper
-      corr = Correspondence(matrix=corr)
+      if (boma_method == "dtw") {
+        corr = cor(t(mat1), t(mat2))
+        dist = 1 / (1+corr)
+        # Asymmetric step means that switching mat1 <-> mat2 might not provide same result
+        dtw_out = dtw::dtw(dist, step.pattern=dtw::asymmetric, open.begin=T, open.end=T)
+        pairs_x = dtw_out$index1
+        pairs_y = dtw_out$index2
+        w = matrix(0, nrow(mat1), nrow(mat2))
+        for (i in 1:length(pairs_x))
+          w[pairs_x[i], pairs_y[i]] = 1
+      }
+      else {
+        removeModal()
+        showModal(modalDialog("Unknown global alignment type selected", footer=NULL, easyClose=T))
+        return(NULL)
+      }
       
       # Local alignment
       aligned = ManiNetCluster(
         mat1,mat2,
         nameX='sample1',nameY='sample2',
-        corr=corr,
+        corr=Correspondence(matrix=w),
         d=as.integer(input$d),
         method=method,
         k_NN=as.integer(input$knn),
-        k_medoids=as.integer(3)
-        # k_medoids=as.integer(input$kmed)
+        k_medoids=as.integer(input$kmed)
       )
       removeModal()
-      
     } else {
       XY_corr = Correspondence(matrix=corr)
-      
-      # aligned = tryCatch(
-      #   {
-          aligned = ManiNetCluster(
-            mat1,mat2,
-            nameX='sample1',nameY='sample2',
-            corr=XY_corr,
-            d=as.integer(input$d),
-            method=method,
-            k_NN=as.integer(input$knn),
-            k_medoids=as.integer(3)
-            # k_medoids=as.integer(input$kmed)
-          )
-          removeModal()
-      #     aligned
-      #   },
-      #   error=function(cond) {
-      #     removeModal()
-      #     showModal(modalDialog(cond, footer=NULL, easyClose=T))
-      #     NULL
-      #   },
-      #   warning=function(cond) {
-      #     removeModal()
-      #     showModal(modalDialog(cond, footer=NULL, easyClose=T))
-      #     NULL
-      #   }
-      # )
+      aligned = ManiNetCluster(
+        mat1,mat2,
+        nameX='sample1',nameY='sample2',
+        corr=XY_corr,
+        d=as.integer(input$d),
+        method=method,
+        k_NN=as.integer(input$knn),
+        k_medoids=as.integer(3),
+        k_medoids=as.integer(input$kmed)
+      )
+      removeModal()
     }
     
-    aligned
+    return(aligned)
   })
   
   
@@ -650,9 +703,14 @@ server <- function(input, output, session) {
   })
   
   
-  output$label_transfer_accuracy <- renderPlot({
+  output$statistics <- renderPlot({
     # Accuracy metrics
     # Get inputs
+    data = get_data()
+    if(is.null(data))
+      return(NULL)
+    corr = data$corr
+    
     meta = get_meta()
     if(is.null(meta))
       return(NULL)
@@ -674,15 +732,15 @@ server <- function(input, output, session) {
         next
       
       # Get calculations
-      source_labels = meta1[cname][,1]
-      transfer_labels = meta2[cname][,1]
+      source_labels = meta1[,cname]
+      transfer_labels = meta2[,cname]
       
       # Batch transfer
       predictions = knn(source_data, transfer_data, cl=source_labels, k=5)
       correct = sum(predictions == transfer_labels)
       cname_acc = (correct / length(transfer_labels))
       if (cname_acc != 0) {
-        labels = append(labels, cname)
+        labels = append(labels, paste("Label Transfer Acc.\n", cname))
         acc = append(acc, cname_acc)
       }
       
@@ -695,12 +753,32 @@ server <- function(input, output, session) {
       # }
     }
     
+    
+    # Pairwise Distance (Marin)
+    if (!is.null(corr)) {
+      distance_sum = 0
+      for (i in 1:nrow(source_data)) {
+        for (j in 1:nrow(transfer_data)) {
+          if(corr[i,j] == 1) {
+            distance_sum = distance_sum + sqrt(sum( (source_data[i,] - transfer_data[j,])^2 ))
+          }
+        }
+      }
+      
+      if (sum(corr == 1) > 0) {
+        pairwise_dist = distance_sum / sum(corr == 1)
+        labels = append(labels, 'Pairwise Distance')
+        acc = append(acc, pairwise_dist)
+      }
+    }
+    
     # Barplot
     if (length(acc) < 1) {
       plot(NULL, xaxt='n', yaxt='n', bty='n', ylab='', xlab='', xlim=0:1, ylim=0:1)
       return(NULL)
     }
-    bar = barplot(acc, main="Label Transfer Accuracy", names.arg=labels, xlim=c(0,1), horiz=T)
+    par(mai=c(1,2,1,1))
+    bar = barplot(acc, main="Alignment Statistics", names.arg=labels, xlim=c(0,1), horiz=T, las=1)
     # https://stackoverflow.com/a/59658285
     text(max(acc - .3, .2), bar, round(acc,3), font=2)
   })
@@ -718,6 +796,7 @@ server <- function(input, output, session) {
       aligned = cbind(aligned, cluster=get_clusters(aligned)$clusters)
       write.csv(aligned, fname)
     }, "text/csv")
+  # traceback()
 }
 
 # Run
