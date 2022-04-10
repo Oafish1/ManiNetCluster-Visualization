@@ -29,16 +29,6 @@ reticulate::use_virtualenv(virtualenv_dir, required=T)
 # devtools::install_github("namtk/ManiNetCluster")
 reticulate::source_python('./maniNetCluster/pyManifold.py')
 
-# Defaults
-# default_meta1 = read.csv("./data/meta1.csv", row.names=1)
-# default_meta2 = read.csv("./data/meta2.csv", row.names=1)
-# default_mat1 = as.matrix(read.csv("./data/mat1.csv", row.names=1))
-# default_mat2 = as.matrix(read.csv("./data/mat2.csv", row.names=1))
-# default_corr = as.matrix(read.csv("./data/corr.csv", row.names=1))
-# 
-# rownames(default_meta2) = default_meta2$SampleID
-# default_meta2 = default_meta2[, colnames(default_meta2) !='SampleID']
-
 # CTW returns only two dim for some reason?
 alignments = c(
   "cca", 
@@ -63,14 +53,36 @@ names(boma_alignments) = c(
 )
 datasets = c(
   "None",
-  "./data/default1/",
-  "./data/default2/"
+  # Brain
+  "./data/Sample1/",
+  "./data/LiScience2018/",
+  "./data/NowakowskiScience2017/",
+  # "./data/TrevinoCell2021/",
+  # "./data/BhaduriNature2020Brain/",
+  # Organoid
+  "./data/Sample2/",
+  "./data/GordonNature2021/",
+  "./data/BireyNature2017/"
+  # "./data/BhaduriNature2020Org/"
 )
 names(datasets) = c(
-  "Custom",
-  "Default 1",
-  "Default 2"
+  "Uploaded Dataset (Below)",
+  # Brain
+  "Sample 1 (490 Bulk x 903 Genes)",
+  "Li et al., Science, 2018 (460 Bulk x 559 Genes)",
+  "Nowakowski, Science, 2017 (4261 x 56864 Cells)",
+  # "Trevino, Cell, 2021 ()",
+  # "Bhaduri, Nature, 2020, Brain ()",
+  # Organoid
+  "Sample 2 (497 Bulk x 903 Genes)",
+  "Gordon et al., Nature, 2021 (62 Bulk x 559 Genes)",
+  "Birey, Nature, 2017 (11838 Cells x 21092 Genes)"
+  # "Bhaduri, Nature, 2020, Organoid ()"
 )
+brain_datasets = names(datasets)[c(1, 2, 3, 4)]
+organoid_datasets = names(datasets)[c(1, 5, 6, 7)]
+brain_default = names(datasets)[3]
+organoid_default = names(datasets)[6]
 
 # Options
 options(shiny.maxRequestSize=0)
@@ -78,15 +90,16 @@ options(shiny.maxRequestSize=0)
 # UI
 ui <- fluidPage(
   # Meta
-  title="Dataset Alignment Applet",
+  title="BOMA App",
   
   # Main plot
   useShinyjs(),
-  h2("Dataset Alignment Applet"),
+  h2("Brain Organoid Manifold Alignment"),
   # textOutput("warnings"),
   fluidRow(
-    column(6, plotlyOutput("content1")),
-    column(6, plotlyOutput("content2")),
+    column(4, img(src='figure1.png', align = "left", width="100%")),
+    column(4, plotlyOutput("content1")),
+    column(4, plotlyOutput("content2")),
   ),
   hr(),
   
@@ -95,50 +108,38 @@ ui <- fluidPage(
     column(4,
       h2("Upload"),
       strong("Row and column labels are expected in all files.  All files are
-        also assumed to be ordered similarly (by sample).  Default data can be
+        also assumed to be ordered similarly (by sample).  Default datasets and source code can be
         found", a("here", href="https://github.com/Oafish1/ManiNetCluster-Visualization/tree/main/data")),
       
       hr(),
       fluidRow(
         column(6,
-               selectInput("custom_mat1", "Replace first dataset with...",
-                           choices=names(datasets), selected="Default 1")),
+          selectInput("custom_mat1", "Use existing brain dataset",
+                     choices=brain_datasets, selected=brain_default),
+          div(style = "margin-top: -10px"),
+          fileInput("mat1", NULL, buttonLabel="First Dataset"),
+          div(style = "margin-top: -30px"),
+          fileInput("meta1", NULL, buttonLabel="First Metadata"),
+        ),
         column(6,
-               selectInput("custom_mat2", "Replace second dataset with...",
-                           choices=names(datasets), selected="Default 2"))
+          selectInput("custom_mat2", "Use existing organoid dataset",
+                      choices=organoid_datasets, selected=organoid_default),
+          div(style = "margin-top: -10px"),
+          fileInput("mat2", NULL, buttonLabel="Second Dataset"),
+          div(style = "margin-top: -30px"),
+          fileInput("meta2", NULL, buttonLabel="Second Metadata"),
+        ),
       ),
-      
-      hr(),
-      div(style="display:inline-block;margin-bottom:-20px",
-        fluidRow(
-        column(6,
-          fileInput("mat1", NULL, buttonLabel="First Dataset")),
-        column(6,
-          fileInput("mat2", NULL, buttonLabel="Second Dataset")),
-      )),
       fluidRow(
-        column(8, p("Data should be of dimension (samples x features) in CSV format. ",
-                    "Assumed to be pre-normalized.  For use with BOMA, features in each",
-                    "dataset should be the same.")),
-        column(4, img(src='data.png', align = "left", width=80)),
-      ),
-      
-      hr(),
-      div(style="display:inline-block;margin-bottom:-20px",
-          fluidRow(
-          column(6,
-            fileInput("meta1", NULL, buttonLabel="First Metadata"),
-          ),
-          column(6,
-            fileInput("meta2", NULL, buttonLabel="Second Metadata"),
-          ),
-      )),
-      fluidRow(
-        column(8, p("Metadata should be ordered similarly to dataset data in CSV format. ",
-         "Two columns may be chosen as the basis for point coloring in the scatterplot and",
-         "BOMA ordering. ",
-         "All other columns are assumed to be categorical and are used for error reporting.")),
-        column(4, img(src='metadata.png', align = "left", width=80)),
+        column(4, p("Datasets should be of dimension (samples x features) in CSV format. ",
+                    "Assumed to be pre-normalized. ", strong("For use with BOMA,",
+                    "number of features in each dataset should be the same."))),
+        column(2, img(src='data.png', align = "left", width="100%")),
+        column(4, p("Metadata should be ordered similarly to dataset data in CSV format. ",
+                    "Two columns may be chosen as the basis for point coloring in the scatterplot and",
+                    "BOMA ordering. ",
+                    "All other columns are assumed to be categorical and are used for error reporting.")),
+        column(2, img(src='metadata.png', align = "left", width="100%")),
       ),
       
       hr(),
@@ -150,7 +151,7 @@ ui <- fluidPage(
           "Meant to represent inter-dataset correspondence and can be calculated",
           "in a variety of ways.  If aligned and no CSV is provided, will default",
           "to the identity matrix. ", strong("BOMA does not use this."))),
-      column(4, img(src='corr.png', align = "left", width=80)),
+      column(4, img(src='corr.png', align = "left", width="50%")),
       ),
     ),
     column(4,
@@ -158,13 +159,13 @@ ui <- fluidPage(
       checkboxInput("use_boma", "Use BOMA", value=T),
       fluidRow(
         column(6,
-               selectInput("boma_method", "BOMA Step 1", choices=names(boma_alignments), selected="DTW")),
+               selectInput("boma_method", "Global Alignment", choices=names(boma_alignments), selected="DTW")),
         column(6,
-               selectInput("boma_col", "Boma Sorting Column", choices=NULL)),
+               selectInput("boma_col", "Sample Ordering", choices=NULL)),
       ),
       
       hr(),
-      selectInput("method", "Method", choices=names(alignments), selected="Non-Linear Manifold Alignment"),
+      selectInput("method", "Local Alignment", choices=names(alignments), selected="Non-Linear Manifold Alignment"),
       fluidRow(
         column(4,
                sliderInput("d", "Dimensions", min = 1, max = 20, value = 3)),
@@ -192,7 +193,7 @@ ui <- fluidPage(
       checkboxInput("show_clusters", "Show Clusters in Plot", value=F),
       fluidRow(
         column(6,
-               selectInput("color_col", "Series Color Column", choices=NULL)),
+               selectInput("color_col", "Cluster Coloring", choices=NULL)),
         column(6,
                selectInput("cluster_method", "Clustering Method", choices=c("K-Means", "PAM"), selected="PAM")),
       ),
@@ -467,7 +468,15 @@ server <- function(input, output, session) {
     if (is.null(mat1) || is.null(mat2)) {
       removeModal()
       showModal(modalDialog("No dataset uploaded", footer=NULL, easyClose=T))
-      return (NULL)
+      return(NULL)
+    }
+    
+    # Make sure datasets are compatible
+    if (dim(mat1)[2] != dim(mat2)[2]) {
+      removeModal()
+      showModal(modalDialog(paste("Datasets do not have the same number of features,", dim(mat1)[2], "vs", dim(mat2)[2]),
+                            footer=NULL, easyClose=T))
+      return(NULL)
     }
       
     # Calculate correspondence if not provided
@@ -476,6 +485,7 @@ server <- function(input, output, session) {
     else if (dim(mat1)[1] == dim(mat2)[1])
       corr = diag(dim(mat1)[1])
     else if (!input$use_boma) {
+      removeModal()
       showModal(modalDialog("Correspondence matrix must be provided unless BOMA is used",
                             footer=NULL, easyClose=T))
       return(NULL)
@@ -588,9 +598,11 @@ server <- function(input, output, session) {
   conditional_boma_clustering <- reactive({
     if (input$use_boma) {
       shinyjs::enable(id="boma_method")
+      shinyjs::enable(id="boma_col")
     }
     else {
       shinyjs::disable(id="boma_method")
+      shinyjs::disable(id="boma_col")
     }
   })
   observeEvent(input$use_boma, conditional_boma_clustering())
@@ -736,7 +748,9 @@ server <- function(input, output, session) {
       transfer_labels = meta2[,cname]
       
       # Batch transfer
-      predictions = knn(source_data, transfer_data, cl=source_labels, k=5)
+      predictions = tryCatch({knn(source_data, transfer_data, cl=source_labels, k=5)}, error=function(cond) {NULL})
+      if (is.null(predictions))
+        next
       correct = sum(predictions == transfer_labels)
       cname_acc = (correct / length(transfer_labels))
       if (cname_acc != 0) {

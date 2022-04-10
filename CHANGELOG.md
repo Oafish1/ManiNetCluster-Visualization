@@ -1,3 +1,12 @@
+# 1.5.0
+- Add better dataset annotations
+- Add figure
+- Add more datasets
+- Added `preprocess.R` for adding datasets more easily
+- Better error handling for statistics
+- More error catching for sample datasets
+- Various UI changes and fixes
+
 # 1.4.0
 - Helper text revisions
 - Implement pairwise distance

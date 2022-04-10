@@ -3,8 +3,9 @@
 .Rhistory
 
 # Data
-data/backup/*
-**/backup/*
+data/Birey*
+data/Nowakowski*
+data/Sample*
 
 # Scratch
 downloads/
