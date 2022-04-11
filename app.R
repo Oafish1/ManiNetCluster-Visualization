@@ -54,13 +54,13 @@ names(boma_alignments) = c(
 datasets = c(
   "None",
   # Brain
-  "./data/Sample1/",
+  "./data/PreprocessedNowakowskiScience2017/",
   "./data/LiScience2018/",
   "./data/NowakowskiScience2017/",
   # "./data/TrevinoCell2021/",
   # "./data/BhaduriNature2020Brain/",
   # Organoid
-  "./data/Sample2/",
+  "./data/PreprocessedKantonNature2019/",
   "./data/GordonNature2021/",
   "./data/BireyNature2017/"
   # "./data/BhaduriNature2020Org/"
@@ -68,15 +68,15 @@ datasets = c(
 names(datasets) = c(
   "Uploaded Dataset (Below)",
   # Brain
-  "Sample 1 (490 Bulk x 903 Genes)",
+  "(Preprocessed) Nowakowski et al., Science, 2017 (490 Pseudo x 903 Genes)",
   "Li et al., Science, 2018 (460 Bulk x 559 Genes)",
-  "Nowakowski, Science, 2017 (4261 x 56864 Cells)",
+  "Nowakowski et al., Science, 2017 (4,261 Cells x 56,864 Genes)",
   # "Trevino, Cell, 2021 ()",
   # "Bhaduri, Nature, 2020, Brain ()",
   # Organoid
-  "Sample 2 (497 Bulk x 903 Genes)",
+  "(Preprocessed) Kanton et al., Nature, 2019 (497 Pseudo x 903 Genes)",
   "Gordon et al., Nature, 2021 (62 Bulk x 559 Genes)",
-  "Birey, Nature, 2017 (11838 Cells x 21092 Genes)"
+  "Birey, Nature, 2017 (11,838 Cells x 21,092 Genes)"
   # "Bhaduri, Nature, 2020, Organoid ()"
 )
 brain_datasets = names(datasets)[c(1, 2, 3, 4)]
@@ -117,17 +117,17 @@ ui <- fluidPage(
           selectInput("custom_mat1", "Use existing brain dataset",
                      choices=brain_datasets, selected=brain_default),
           div(style = "margin-top: -10px"),
-          fileInput("mat1", NULL, buttonLabel="First Dataset"),
+          fileInput("mat1", NULL, buttonLabel="Brain Dataset"),
           div(style = "margin-top: -30px"),
-          fileInput("meta1", NULL, buttonLabel="First Metadata"),
+          fileInput("meta1", NULL, buttonLabel="Brain Metadata"),
         ),
         column(6,
           selectInput("custom_mat2", "Use existing organoid dataset",
                       choices=organoid_datasets, selected=organoid_default),
           div(style = "margin-top: -10px"),
-          fileInput("mat2", NULL, buttonLabel="Second Dataset"),
+          fileInput("mat2", NULL, buttonLabel="Organoid Dataset"),
           div(style = "margin-top: -30px"),
-          fileInput("meta2", NULL, buttonLabel="Second Metadata"),
+          fileInput("meta2", NULL, buttonLabel="Organoid Metadata"),
         ),
       ),
       fluidRow(
@@ -170,9 +170,9 @@ ui <- fluidPage(
         column(4,
                sliderInput("d", "Dimensions", min = 1, max = 20, value = 3)),
         column(4,
-               sliderInput("knn", "Nearest Neighbors", min = 0, max = 20, value = 3), ),
+               sliderInput("knn", "Nearest Neighbors", min = 2, max = 20, value = 5), ),
         column(4,
-               sliderInput("kmed", "Medoids", min = 0, max = 20, value = 6),),
+               sliderInput("kmed", "Medoids", min = 2, max = 20, value = 6),),
       ),
       
       hr(),
@@ -321,6 +321,13 @@ server <- function(input, output, session) {
     }
     data = data[order(data$label), ]
     
+    if (sample_label == "sample1")
+      title = "Brain"
+    else if (sample_label == "sample2")
+      title = "Organoid"
+    else
+      title = paste("Dataset", substr(sample_label, nchar(sample_label), nchar(sample_label)))
+    
     s3d = plot_ly(
       type = "scatter3d",
       mode = "markers",
@@ -331,7 +338,7 @@ server <- function(input, output, session) {
     )
     # https://stackoverflow.com/a/66117098 for continually rotating
     s3d %>% layout(
-      title=paste("Dataset", substr(sample_label, nchar(sample_label), nchar(sample_label))),
+      title=title,
       legend=list(title=list(text=legend_title)),
       scene=list(
         xaxis=list(range=c(min(res0$Val0), max(res0$Val0))),

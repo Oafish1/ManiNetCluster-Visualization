@@ -2,10 +2,9 @@
 *.RData
 .Rhistory
 
-# Data
+# Data (Too Large)
 data/Birey*
 data/Nowakowski*
-data/Sample*
 
 # Scratch
 downloads/

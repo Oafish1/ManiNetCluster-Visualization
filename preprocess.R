@@ -17,6 +17,10 @@ load("all.data.RData")
 # org.meta1, org.meta2
 
 
+### Misc
+write.csv(knn_ini, "corr.csv")
+
+
 ### Works
 # Vars
 prefix = "data/NowakowskiScience2017/"
