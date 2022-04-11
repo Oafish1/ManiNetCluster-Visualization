@@ -45,44 +45,43 @@ names(alignments) = c(
   "Non-Linear Manifold Warping"
 )
 boma_alignments = c(
-  "dtw"
-  # asddf: Add KNN
+  "dtw",
+  "knn"
 )
 names(boma_alignments) = c(
-  "Dynamic Time Warping"
+  "Dynamic Time Warping (Bulk Expression)",
+  "Correlation KNN (Pseudocells)"
 )
+boma_global_method_default = names(boma_alignments)[2]
 datasets = c(
   "None",
   # Brain
-  "./data/PreprocessedNowakowskiScience2017/",
-  "./data/LiScience2018/",
   "./data/NowakowskiScience2017/",
+  "./data/LiScience2018/",
   # "./data/TrevinoCell2021/",
   # "./data/BhaduriNature2020Brain/",
   # Organoid
-  "./data/PreprocessedKantonNature2019/",
-  "./data/GordonNature2021/",
-  "./data/BireyNature2017/"
+  "./data/KantonNature2019/",
+  "./data/GordonNature2021/"
   # "./data/BhaduriNature2020Org/"
 )
 names(datasets) = c(
   "Uploaded Dataset (Below)",
   # Brain
-  "(Preprocessed) Nowakowski et al., Science, 2017 (490 Pseudo x 903 Genes)",
-  "Li et al., Science, 2018 (460 Bulk x 559 Genes)",
-  "Nowakowski et al., Science, 2017 (4,261 Cells x 56,864 Genes)",
+  "Nowakowski et al., Science, 2017 (490 Pseudo Cells x 903 Genes)",
+  "Li et al., Science, 2018 (460 Bulk Samples x 559 Genes)",
   # "Trevino, Cell, 2021 ()",
   # "Bhaduri, Nature, 2020, Brain ()",
   # Organoid
-  "(Preprocessed) Kanton et al., Nature, 2019 (497 Pseudo x 903 Genes)",
-  "Gordon et al., Nature, 2021 (62 Bulk x 559 Genes)",
-  "Birey, Nature, 2017 (11,838 Cells x 21,092 Genes)"
+  "Kanton et al., Nature, 2019 (497 Pseudo Cells x 903 Genes)",
+  "Gordon et al., Nature, 2021 (62 Bulk Samples x 559 Genes)"
+  # "Birey, Nature, 2017 ()"
   # "Bhaduri, Nature, 2020, Organoid ()"
 )
-brain_datasets = names(datasets)[c(1, 2, 3, 4)]
-organoid_datasets = names(datasets)[c(1, 5, 6, 7)]
-brain_default = names(datasets)[3]
-organoid_default = names(datasets)[6]
+brain_datasets = names(datasets)[c(1, 2, 3)]
+organoid_datasets = names(datasets)[c(1, 4, 5)]
+brain_default = names(datasets)[2]
+organoid_default = names(datasets)[4]
 
 # Options
 options(shiny.maxRequestSize=0)
@@ -159,7 +158,7 @@ ui <- fluidPage(
       checkboxInput("use_boma", "Use BOMA", value=T),
       fluidRow(
         column(6,
-               selectInput("boma_method", "Global Alignment", choices=names(boma_alignments), selected="DTW")),
+               selectInput("boma_method", "Global Alignment", choices=names(boma_alignments), selected=boma_global_method_default)),
         column(6,
                selectInput("boma_col", "Sample Ordering", choices=NULL)),
       ),
@@ -176,21 +175,25 @@ ui <- fluidPage(
       ),
       
       hr(),
-      fluidRow(
-        column(6,
-               downloadButton("download", "Download Aligned Data"),),
-        column(6,
-               p("Download data as a single CSV using the chosen parameters.  Includes clusters."),),
-      ),
-      
-      hr(),
       plotOutput("statistics", height=200),
       em("Zero values are assumed to be errant and are excluded. ",
          "Labels are extracted from columns present in both metadata files. "),
+      
+      hr(),
+      fluidRow(
+        column(3,
+               downloadButton("download", "Download Aligned Data"),),
+        column(9,
+               p("Download data as a single CSV using the chosen parameters.  Includes a column indicating",
+                 "the dataset, columns for the number of dimensions selected, and a single column indicating",
+                 "cluster.  A column indicating module type is also included; more details can be found",
+               a("here", href="https://github.com/namtk/ManiNetCluster"))),
+      ),
     ),
+    
     column(4,
-      h2("Visualization"),
-      checkboxInput("show_clusters", "Show Clusters in Plot", value=F),
+      h2("Clustering"),
+      checkboxInput("show_clusters", "Show Clusters in Plot", value=T),
       fluidRow(
         column(6,
                selectInput("color_col", "Cluster Coloring", choices=NULL)),
@@ -333,7 +336,7 @@ server <- function(input, output, session) {
       mode = "markers",
       data = data,
       x = ~x, y = ~y, z = ~z,
-      marker = list(bgcolor="#e5e5e5", color=~color),
+      marker = list(bgcolor="#e5e5e5", color=~color, line=list(width=1, color="black")),
       split=~label
     )
     # https://stackoverflow.com/a/66117098 for continually rotating
@@ -346,15 +349,10 @@ server <- function(input, output, session) {
         zaxis=list(range=c(min(res0$Val2), max(res0$Val2))),
         aspectmode='cube',
         camera=list(
-          eye = list(
-            x = 1.25,
-            y = 1.25,
-            z = 1.25),
-          center = list(
-            x = 0,
-            y = 0,
-            z = 0
-        ))
+          eye = list(x=1.25, y=1.25, z=1.25),
+          up = list(x=0, y=0, z=1),
+          center = list(x=0, y=0, z=0)
+        )
     ))
   }
   
@@ -478,12 +476,24 @@ server <- function(input, output, session) {
       return(NULL)
     }
     
-    # Make sure datasets are compatible
+    # Make datasets compatible
     if (dim(mat1)[2] != dim(mat2)[2]) {
+      col1 = colnames(mat1)
+      col2 = colnames(mat2)
+      genes_in_common = intersect(col1, col2)
+      
       removeModal()
-      showModal(modalDialog(paste("Datasets do not have the same number of features,", dim(mat1)[2], "vs", dim(mat2)[2]),
-                            footer=NULL, easyClose=T))
-      return(NULL)
+      if (genes_in_common < 1)
+        showModal(modalDialog(paste("Datasets do not have the same number of features,", dim(mat1)[2], "vs", dim(mat2)[2],
+                                    "\nFound", length(genes_in_common), "common genes and will cancel computation."),
+                              footer=NULL, easyClose=T))
+      else
+        showModal(modalDialog(paste("Datasets do not have the same number of features,", dim(mat1)[2], "vs", dim(mat2)[2],
+                                    "\nFound", length(genes_in_common), "common genes and will proceed as normal."),
+                              footer=NULL, easyClose=T))
+      
+      mat1 = mat1[,genes_in_common]
+      mat2 = mat2[,genes_in_common]
     }
       
     # Calculate correspondence if not provided
@@ -582,8 +592,7 @@ server <- function(input, output, session) {
   })
   default_col_selection <- reactive({
     # Pretty hacky, but inconsequential
-    if(identical(meta_col_choices(), c("Days", "time", "PAM.Cluster"))
-       || identical(meta_col_choices(), c("None", "Days", "time", "PAM.Cluster")))
+    if("time" %in% meta_col_choices())
       return("time")
     return(NULL)
   })
@@ -642,8 +651,10 @@ server <- function(input, output, session) {
       if (input$boma_col == "")
         return(NULL)
       else if (input$boma_col != "None") {
-        mat1 = mat1[order(meta1[,input$boma_col]),]
-        mat2 = mat2[order(meta2[,input$boma_col]),]
+        order1 = order(meta1[,input$boma_col])
+        order2 = order(meta2[,input$boma_col])
+        mat1 = mat1[order1,]
+        mat2 = mat2[order2,]
       }
       
       # Global alignment
@@ -657,8 +668,21 @@ server <- function(input, output, session) {
         w = matrix(0, nrow(mat1), nrow(mat2))
         for (i in 1:length(pairs_x))
           w[pairs_x[i], pairs_y[i]] = 1
-      }
-      else {
+      } else if (boma_method == "knn") {
+        corr = cor(t(mat1), t(mat2))
+        dist = 1 / (1+corr)
+        k = as.integer(input$knn)  # Make custom?
+        
+        # Make graph
+        w=matrix(0, dim(mat1)[1], dim(mat2)[1])
+        corr = apply(corr, 2, function(x) order(x,decreasing=T)[1:k])
+        if (k > 1)
+          for (i in 1:dim(corr)[2])
+            w[corr[,i], i] = 1
+        else if (k==1)
+          for (i in c(1:length(corr)))
+            w[corr[i], i] = 1
+      } else {
         removeModal()
         showModal(modalDialog("Unknown global alignment type selected", footer=NULL, easyClose=T))
         return(NULL)
@@ -674,6 +698,23 @@ server <- function(input, output, session) {
         k_NN=as.integer(input$knn),
         k_medoids=as.integer(input$kmed)
       )
+      
+      # Reorder data
+      if (input$boma_col == "")
+        return(NULL)
+      else if (input$boma_col != "None") {
+        inv_order1 = numeric(length=length(order1))
+        for (i in 1:length(order1)) {
+          inv_order1[order1[i]] = i
+        }
+        inv_order2 = numeric(length=length(order2))
+        for (i in 1:length(order2)) {
+          inv_order2[order2[i]] = i
+        }
+        aligned[aligned$sample=="sample1",] = aligned[aligned$sample=="sample1",][inv_order1,]
+        aligned[aligned$sample=="sample2",] = aligned[aligned$sample=="sample2",][inv_order2,]
+      }
+      
       removeModal()
     } else {
       XY_corr = Correspondence(matrix=corr)

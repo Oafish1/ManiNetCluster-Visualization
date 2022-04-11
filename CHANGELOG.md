@@ -1,3 +1,17 @@
+# 1.5.2
+- UI changes
+- More user explanations
+- Dataset renaming and filtering
+- BOMA ordering bugfix
+- Added KNN method for local alignment
+- Automatically detect genes in common between datasets
+
+# 1.5.1
+- UI changes
+- Dataset uploads
+- Dataset size reductions
+- Common gene detection
+
 # 1.5.0
 - Add better dataset annotations
 - Add figure
