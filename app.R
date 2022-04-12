@@ -52,7 +52,7 @@ names(boma_alignments) = c(
   "Dynamic Time Warping (Bulk Expression)",
   "Correlation KNN (Pseudocells)"
 )
-boma_global_method_default = names(boma_alignments)[2]
+boma_global_method_default = names(boma_alignments)[1]
 datasets = c(
   "None",
   # Brain
@@ -68,20 +68,24 @@ datasets = c(
 names(datasets) = c(
   "Uploaded Dataset (Below)",
   # Brain
-  "Nowakowski et al., Science, 2017 (490 Pseudo Cells x 903 Genes)",
+  "Nowakowski et al., Science, 2017 (490 Pseudocells x 903 Genes)",
   "Li et al., Science, 2018 (460 Bulk Samples x 559 Genes)",
   # "Trevino, Cell, 2021 ()",
   # "Bhaduri, Nature, 2020, Brain ()",
   # Organoid
-  "Kanton et al., Nature, 2019 (497 Pseudo Cells x 903 Genes)",
+  "Kanton et al., Nature, 2019 (497 Pseudocells x 903 Genes)",
   "Gordon et al., Nature, 2021 (62 Bulk Samples x 559 Genes)"
   # "Birey, Nature, 2017 ()"
   # "Bhaduri, Nature, 2020, Organoid ()"
 )
 brain_datasets = names(datasets)[c(1, 2, 3)]
 organoid_datasets = names(datasets)[c(1, 4, 5)]
-brain_default = names(datasets)[2]
-organoid_default = names(datasets)[4]
+brain_default = names(datasets)[3]
+organoid_default = names(datasets)[5]
+
+plot_colors = c("Greens Oranges", "Spectral Spectral")
+names(plot_colors) = c("Green/Orange", "Spectral")
+plot_color_default = names(plot_colors)[2]
 
 # Options
 options(shiny.maxRequestSize=0)
@@ -158,9 +162,12 @@ ui <- fluidPage(
       checkboxInput("use_boma", "Use BOMA", value=T),
       fluidRow(
         column(6,
-               selectInput("boma_method", "Global Alignment", choices=names(boma_alignments), selected=boma_global_method_default)),
+               selectInput("boma_method", "Global Alignment", choices=names(boma_alignments), selected=boma_global_method_default),
+               sliderInput("boma_knn", "Nearest Neighbors", min = 2, max = 20, value = 5),
+        ),
         column(6,
-               selectInput("boma_col", "Sample Ordering", choices=NULL)),
+               selectInput("boma_col", "Sample Ordering", choices=NULL)
+        ),
       ),
       
       hr(),
@@ -169,7 +176,7 @@ ui <- fluidPage(
         column(4,
                sliderInput("d", "Dimensions", min = 1, max = 20, value = 3)),
         column(4,
-               sliderInput("knn", "Nearest Neighbors", min = 2, max = 20, value = 5), ),
+               sliderInput("knn", "Nearest Neighbors", min = 2, max = 20, value = 3), ),
         column(4,
                sliderInput("kmed", "Medoids", min = 2, max = 20, value = 6),),
       ),
@@ -193,18 +200,17 @@ ui <- fluidPage(
     
     column(4,
       h2("Clustering"),
-      checkboxInput("show_clusters", "Show Clusters in Plot", value=T),
+      checkboxInput("show_clusters", "Show Clusters in Plot", value=F),
       fluidRow(
         column(6,
-               selectInput("color_col", "Cluster Coloring", choices=NULL)),
+          selectInput("color_col", "Coloring Feature", choices=NULL),
+          selectInput("color_scheme", "Color Scheme", choices=names(plot_colors), selected=plot_color_default),
+        ),
         column(6,
-               selectInput("cluster_method", "Clustering Method", choices=c("K-Means", "PAM"), selected="PAM")),
+          selectInput("cluster_method", "Clustering Method", choices=c("K-Means", "PAM"), selected="PAM"),
+          sliderInput("num_clusters", "Clusters", min = 1, max = 14, value = 4),
+        ),
       ),
-      sliderInput("num_clusters", "Clusters", min = 1, max = 14, value = 4),
-      
-      # h2("Gene Information"),
-      # em("Placeholder:"),
-      # tableOutput("gci"),
       
       hr(),
       fluidRow(
@@ -284,6 +290,15 @@ server <- function(input, output, session) {
   }
   
   
+  get_color_scheme <- function(method_code) {
+    for (i in 1:length(plot_colors)) {
+      if (method_code == names(plot_colors)[i])
+        return(strsplit(plot_colors[i], " ")[[1]])
+    }
+    return(NULL)
+  }
+  
+  
   plot_alignment = function(sample_label, default_color, use_legend=F) {
     dimensions = refresh_dimensions()
     validate(need(dimensions >= 3, paste(
@@ -308,6 +323,7 @@ server <- function(input, output, session) {
     df2$time = c(meta1[,input$color_col],meta2[,input$color_col])
     res = data.frame(df2[df2$data==sample_label,])
     res0 = data.frame(df2)
+    # Might want to clean these conditions eventually
     clusters = get_clusters(df2, default_color, !input$show_clusters, length(unique(res$time)))
     time.cols1 = clusters$colors
     if (!input$show_clusters) {
@@ -483,7 +499,7 @@ server <- function(input, output, session) {
       genes_in_common = intersect(col1, col2)
       
       removeModal()
-      if (genes_in_common < 1)
+      if (length(genes_in_common) < 1)
         showModal(modalDialog(paste("Datasets do not have the same number of features,", dim(mat1)[2], "vs", dim(mat2)[2],
                                     "\nFound", length(genes_in_common), "common genes and will cancel computation."),
                               footer=NULL, easyClose=T))
@@ -577,7 +593,15 @@ server <- function(input, output, session) {
         color_cols = append(color_cols, col)
     return(color_cols)
   })
-  meta_col_choices_none <- reactive({
+  default_col_selection <- reactive({
+    # Pretty hacky, but inconsequential
+    if("cellType" %in% meta_col_choices())
+      return("cellType")
+    if("time" %in% meta_col_choices())
+      return("time")
+    return(NULL)
+  })
+  meta_col_choices_boma <- reactive({
     meta = get_meta()
     if(is.null(meta))
       return(NULL)
@@ -590,22 +614,24 @@ server <- function(input, output, session) {
         color_cols = append(color_cols, col)
     return(color_cols)
   })
-  default_col_selection <- reactive({
+  default_col_selection_boma <- reactive({
     # Pretty hacky, but inconsequential
     if("time" %in% meta_col_choices())
       return("time")
     return(NULL)
   })
   observeEvent(meta_col_choices(), updateSelectInput(session, "color_col", choices=meta_col_choices(), selected=default_col_selection()))
-  observeEvent(meta_col_choices_none(), updateSelectInput(session, "boma_col", choices=meta_col_choices_none(), selected=default_col_selection()))
+  observeEvent(meta_col_choices_boma(), updateSelectInput(session, "boma_col", choices=meta_col_choices_boma(), selected=default_col_selection_boma()))
   
   
   conditional_colors <- reactive({
     if (input$show_clusters) {
       shinyjs::disable(id="color_col")
+      shinyjs::disable(id="color_scheme")
     }
     else {
       shinyjs::enable(id="color_col")
+      shinyjs::enable(id="color_scheme")
     }
   })
   observeEvent(input$show_clusters, conditional_colors())
@@ -615,13 +641,24 @@ server <- function(input, output, session) {
     if (input$use_boma) {
       shinyjs::enable(id="boma_method")
       shinyjs::enable(id="boma_col")
+      if (input$boma_method %in% c("knn"))
+        shinyjs::enable(id="boma_knn")
     }
     else {
       shinyjs::disable(id="boma_method")
       shinyjs::disable(id="boma_col")
+      shinyjs::disable(id="boma_knn")
     }
   })
   observeEvent(input$use_boma, conditional_boma_clustering())
+  
+  conditional_boma_knn <- reactive({
+    if (get_boma_method(input$boma_method) %in% c("knn"))
+      shinyjs::enable(id="boma_knn")
+    else
+      shinyjs::disable(id="boma_knn")
+  })
+  observeEvent(input$boma_method, conditional_boma_knn())
     
   
   perform_alignment <- reactive({
@@ -671,7 +708,7 @@ server <- function(input, output, session) {
       } else if (boma_method == "knn") {
         corr = cor(t(mat1), t(mat2))
         dist = 1 / (1+corr)
-        k = as.integer(input$knn)  # Make custom?
+        k = as.integer(input$boma_knn)
         
         # Make graph
         w=matrix(0, dim(mat1)[1], dim(mat2)[1])
@@ -846,11 +883,10 @@ server <- function(input, output, session) {
   })
   
   
-  output$content1 <- renderPlotly({plot_alignment('sample1', 'Greens')})
-  output$content2 <- renderPlotly({plot_alignment('sample2', 'Oranges')})
+  output$content1 <- renderPlotly({plot_alignment('sample1', get_color_scheme(input$color_scheme)[1])})
+  output$content2 <- renderPlotly({plot_alignment('sample2', get_color_scheme(input$color_scheme)[2])})
   output$heatmap <- renderPlot({plot_heatmap()})
   output$colorbar <- renderPlot({plot_colorbar()})
-  # output$gci <- renderTable(data.frame(Gene=c(0,1,2), Contribution=c(0,1,0)))
   
   
   output$download <- downloadHandler("aligned.csv", function(fname) {

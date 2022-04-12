@@ -1,3 +1,10 @@
+# 1.5.3
+- Add color theme selector
+- Add higher resolution figure 1
+- Add slider for global alignment KNN
+- Filter pseudocell datasets
+- Rearrange UI to be more intuitive
+
 # 1.5.2
 - UI changes
 - More user explanations
