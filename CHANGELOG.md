@@ -1,3 +1,9 @@
+# 1.5.4
+- Added a run button
+- Removed `boma` folder
+- Reorganize functions
+- Revise UI on uploads
+
 # 1.5.3
 - Add color theme selector
 - Add higher resolution figure 1

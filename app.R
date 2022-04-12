@@ -85,7 +85,11 @@ organoid_default = names(datasets)[5]
 
 plot_colors = c("Greens Oranges", "Spectral Spectral")
 names(plot_colors) = c("Green/Orange", "Spectral")
-plot_color_default = names(plot_colors)[2]
+plot_color_default = names(plot_colors)[1]
+
+# Other initial options
+initial_boma_col = "time"
+initial_color_col = "time"
 
 # Options
 options(shiny.maxRequestSize=0)
@@ -146,27 +150,48 @@ ui <- fluidPage(
       ),
       
       hr(),
-      fileInput("corr", NULL, buttonLabel="Correspondence", multiple=FALSE),
+      fileInput("corr", NULL, buttonLabel="Correspondence (Not used by BOMA)", multiple=FALSE),
       div(style = "margin-top: -20px"),
       fluidRow(
         column(8,
         p("Correspondence matrix (samples1 x samples2) should be of CSV format. ",
           "Meant to represent inter-dataset correspondence and can be calculated",
           "in a variety of ways.  If aligned and no CSV is provided, will default",
-          "to the identity matrix. ", strong("BOMA does not use this."))),
-      column(4, img(src='corr.png', align = "left", width="50%")),
+          "to the identity matrix. ", strong("BOMA does not use this.")),
+        ),
+        column(4, img(src='corr.png', align = "left", width="50%")),
       ),
     ),
     column(4,
       h2("Alignment"),
-      checkboxInput("use_boma", "Use BOMA", value=T),
+      
+      fluidRow(
+        column(3,
+          checkboxInput("use_boma", "Use BOMA", value=T),
+        ),
+        column(3,
+          actionButton("load", "Load Data"),
+        ),
+        column(3,
+          actionButton("run", "Calculate"),
+        ),
+        column(3,
+          downloadButton("download", "Download"),
+        ),
+      ),
+      em("Download data as a single CSV using the chosen parameters.  Includes a column indicating",
+         "the dataset, columns for the number of dimensions selected, and a single column indicating",
+         "cluster.  A column indicating module type is also included; more details can be found",
+         a("here", href="https://github.com/namtk/ManiNetCluster")),
+      
+      hr(),
       fluidRow(
         column(6,
                selectInput("boma_method", "Global Alignment", choices=names(boma_alignments), selected=boma_global_method_default),
                sliderInput("boma_knn", "Nearest Neighbors", min = 2, max = 20, value = 5),
         ),
         column(6,
-               selectInput("boma_col", "Sample Ordering", choices=NULL)
+               selectInput("boma_col", "Sample Ordering", choices=c(initial_boma_col), selected=initial_boma_col),
         ),
       ),
       
@@ -180,22 +205,9 @@ ui <- fluidPage(
         column(4,
                sliderInput("kmed", "Medoids", min = 2, max = 20, value = 6),),
       ),
-      
-      hr(),
       plotOutput("statistics", height=200),
       em("Zero values are assumed to be errant and are excluded. ",
          "Labels are extracted from columns present in both metadata files. "),
-      
-      hr(),
-      fluidRow(
-        column(3,
-               downloadButton("download", "Download Aligned Data"),),
-        column(9,
-               p("Download data as a single CSV using the chosen parameters.  Includes a column indicating",
-                 "the dataset, columns for the number of dimensions selected, and a single column indicating",
-                 "cluster.  A column indicating module type is also included; more details can be found",
-               a("here", href="https://github.com/namtk/ManiNetCluster"))),
-      ),
     ),
     
     column(4,
@@ -203,7 +215,7 @@ ui <- fluidPage(
       checkboxInput("show_clusters", "Show Clusters in Plot", value=F),
       fluidRow(
         column(6,
-          selectInput("color_col", "Coloring Feature", choices=NULL),
+          selectInput("color_col", "Coloring Feature", choices=c(initial_color_col), selected=initial_color_col),
           selectInput("color_scheme", "Color Scheme", choices=names(plot_colors), selected=plot_color_default),
         ),
         column(6,
@@ -219,11 +231,11 @@ ui <- fluidPage(
       ),
     ),
   ),
-  
 )
 
 # Server
 server <- function(input, output, session) {
+  ### Utility Functions
   get_method <- function(method_code) {
     for (i in 1:length(alignments)) {
       if (method_code == names(alignments)[i])
@@ -264,8 +276,8 @@ server <- function(input, output, session) {
     else if (input$cluster_method == "PAM")
       clusters = pam(working_data, input$num_clusters)$clustering
     else if (input$cluster_method == "Spectral") {
-      s1 <- as.matrix(data.frame(df[df$data=="sample1",])[,3:(2+input$d)])
-      s2 <- as.matrix(data.frame(df[df$data=="sample2",])[,3:(2+input$d)])
+      s1 <- as.matrix(data.frame(df[df$data=="brain",])[,3:(2+input$d)])
+      s2 <- as.matrix(data.frame(df[df$data=="organoid",])[,3:(2+input$d)])
       dist = as.matrix(pdist::pdist(s1, s2))
     }
     else
@@ -299,84 +311,17 @@ server <- function(input, output, session) {
   }
   
   
-  plot_alignment = function(sample_label, default_color, use_legend=F) {
-    dimensions = refresh_dimensions()
-    validate(need(dimensions >= 3, paste(
-      "Must have dimensions \u22653 to plot, currently have", dimensions)))
-    validate(need(input$color_col != "", "Coloring column must be non-empty"))
-    
-    # Get inputs
-    meta = get_meta()
-    if(is.null(meta))
-      return(NULL)
-    meta1 = meta$meta1
-    meta2 = meta$meta2
-    
-    # Plot code from paper
-    df2 <- perform_alignment()
-    if(is.null(df2))
-      return(NULL)
-    # Assumes ordering from NLMA
-    if (is.null(tryCatch({meta1[,input$color_col]; meta2[,input$color_col]},
-                  error=function(cond) {return(NULL)})))
-      return(NULL)
-    df2$time = c(meta1[,input$color_col],meta2[,input$color_col])
-    res = data.frame(df2[df2$data==sample_label,])
-    res0 = data.frame(df2)
-    # Might want to clean these conditions eventually
-    clusters = get_clusters(df2, default_color, !input$show_clusters, length(unique(res$time)))
-    time.cols1 = clusters$colors
-    if (!input$show_clusters) {
-      par(mar=c(5.1,4.1,4.1,4.1), xpd=T)
-      time.cols1 = time.cols1[ as.numeric(mapvalues(res$time,unique(res$time),c(1:length(unique(res$time))))) ]
-      data = data.frame(x=res[,3], y=res[,4], z=res[,5], color=time.cols1, label=as.factor(res$time))
-      
-      legend_title = input$color_col
-    } else {
-      time.cols1 = time.cols1[df2$data==sample_label]
-      labels = paste("Cluster ", clusters$clusters[df2$data==sample_label], sep="")
-      data = data.frame(x=res[,3], y=res[,4], z=res[,5], color=time.cols1, label=labels)
-      legend_title = "Clusters"
-    }
-    data = data[order(data$label), ]
-    
-    if (sample_label == "sample1")
-      title = "Brain"
-    else if (sample_label == "sample2")
-      title = "Organoid"
-    else
-      title = paste("Dataset", substr(sample_label, nchar(sample_label), nchar(sample_label)))
-    
-    s3d = plot_ly(
-      type = "scatter3d",
-      mode = "markers",
-      data = data,
-      x = ~x, y = ~y, z = ~z,
-      marker = list(bgcolor="#e5e5e5", color=~color, line=list(width=1, color="black")),
-      split=~label
-    )
-    # https://stackoverflow.com/a/66117098 for continually rotating
-    s3d %>% layout(
-      title=title,
-      legend=list(title=list(text=legend_title)),
-      scene=list(
-        xaxis=list(range=c(min(res0$Val0), max(res0$Val0))),
-        yaxis=list(range=c(min(res0$Val1), max(res0$Val1))),
-        zaxis=list(range=c(min(res0$Val2), max(res0$Val2))),
-        aspectmode='cube',
-        camera=list(
-          eye = list(x=1.25, y=1.25, z=1.25),
-          up = list(x=0, y=0, z=1),
-          center = list(x=0, y=0, z=0)
-        )
-    ))
-  }
-  
-  
   get_dist <- function() {
-    aligned <- perform_alignment()
-    if(is.null(aligned))
+    # Get inputs
+    alignment <- perform_alignment()
+    if(is.null(alignment))
       return(NULL)
+    aligned = alignment$aligned
+    mat1 = alignment$mat1
+    mat2 = alignment$mat2
+    meta1 = alignment$meta1
+    meta2 = alignment$meta2
+    
     clusters <- get_clusters(aligned)
     
     aligned = aligned[sort(clusters$clusters, index.return=T)$ix,]
@@ -384,10 +329,10 @@ server <- function(input, output, session) {
     clusters$clusters = clusters$clusters[sort(clusters$clusters, index.return=T)$ix]
     clusters = clusters[sort(clusters$clusters, index.return=T)$ix]
     
-    s1 <- as.matrix(data.frame(aligned[aligned$data=="sample1",])[,3:(2+input$d)])
-    s2 <- as.matrix(data.frame(aligned[aligned$data=="sample2",])[,3:(2+input$d)])
-    rsc = clusters$colors[aligned$data=="sample1"]
-    csc = clusters$colors[aligned$data=="sample2"]
+    s1 <- as.matrix(data.frame(aligned[aligned$data=="brain",])[,3:(2+input$d)])
+    s2 <- as.matrix(data.frame(aligned[aligned$data=="organoid",])[,3:(2+input$d)])
+    rsc = clusters$colors[aligned$data=="brain"]
+    csc = clusters$colors[aligned$data=="organoid"]
     
     s1 = s1[nrow(s1):1,]
     rsc = rsc[length(rsc):1]
@@ -397,6 +342,98 @@ server <- function(input, output, session) {
   }
   
   
+  get_meta <- eventReactive(input$load, {
+    meta1 <- input$meta1
+    meta2 <- input$meta2
+    
+    # Load uploaded datasets
+    if (!is.null(meta1))
+      meta1 = read.csv(meta1$datapath, row.names=1)
+    if (!is.null(meta2))
+      meta2 = read.csv(meta2$datapath, row.names=1)
+    
+    # Load custom datasets
+    custom_dataset1 = get_custom_dataset(input$custom_mat1)
+    if (custom_dataset1 != "None")
+      meta1 = read.csv(paste(custom_dataset1, "meta.csv", sep=""), row.names=1)
+    custom_dataset2 = get_custom_dataset(input$custom_mat2)
+    if (custom_dataset2 != "None")
+      meta2 = read.csv(paste(custom_dataset2, "meta.csv", sep=""), row.names=1)
+    
+    data = get_data()
+    if(is.null(data))
+      return(NULL)
+    if( (dim(data$mat1)[1] == dim(meta1)[1]) && (dim(data$mat2)[1] == dim(meta2)[1]) )
+      return(list("meta1"=meta1, "meta2"=meta2))
+    showModal(modalDialog("Length of meta and data must match", footer=NULL, easyClose=T))
+    return(NULL)
+  }, ignoreNULL=F)
+  
+  
+  get_data <- eventReactive(input$load, {
+    mat1 <- input$mat1
+    mat2 <- input$mat2
+    corr <- input$corr
+    
+    # Load uploaded datasets
+    if (!is.null(mat1))
+      mat1 <- as.matrix(read.csv(mat1$datapath, row.names=1))
+    if (!is.null(mat2))
+      mat2 <- as.matrix(read.csv(mat2$datapath, row.names=1))
+    
+    # Load custom datasets
+    custom_dataset1 = get_custom_dataset(input$custom_mat1)
+    if (custom_dataset1 != "None")
+      mat1 = read.csv(paste(custom_dataset1, "mat.csv", sep=""), row.names=1)
+    custom_dataset2 = get_custom_dataset(input$custom_mat2)
+    if (custom_dataset2 != "None")
+      mat2 = read.csv(paste(custom_dataset2, "mat.csv", sep=""), row.names=1)
+    
+    # Exception handling
+    if (is.null(mat1) || is.null(mat2)) {
+      removeModal()
+      showModal(modalDialog("No dataset uploaded", footer=NULL, easyClose=T))
+      return(NULL)
+    }
+    
+    # Make datasets compatible
+    if (dim(mat1)[2] != dim(mat2)[2]) {
+      col1 = colnames(mat1)
+      col2 = colnames(mat2)
+      genes_in_common = intersect(col1, col2)
+      
+      removeModal()
+      if (length(genes_in_common) < 1)
+        showModal(modalDialog(paste("Datasets do not have the same number of features,", dim(mat1)[2], "vs", dim(mat2)[2],
+                                    " \nFound", length(genes_in_common), "common genes and will cancel computation."),
+                              footer=NULL, easyClose=T))
+      else
+        showModal(modalDialog(paste("Datasets do not have the same number of features,", dim(mat1)[2], "vs", dim(mat2)[2],
+                                    " \nFound", length(genes_in_common), "common genes and will proceed as normal."),
+                              footer=NULL, easyClose=T))
+      
+      mat1 = mat1[,genes_in_common]
+      mat2 = mat2[,genes_in_common]
+    }
+    
+    # Calculate correspondence if not provided
+    if (!is.null(corr))
+      corr <- as.matrix(read.csv(corr$datapath, row.names=1))
+    else if (dim(mat1)[1] == dim(mat2)[1])
+      corr = diag(dim(mat1)[1])
+    else if (!input$use_boma) {
+      removeModal()
+      showModal(modalDialog("Correspondence matrix must be provided unless BOMA is used",
+                            footer=NULL, easyClose=T))
+      return(NULL)
+    } else
+      corr = NULL
+    
+    return(list("mat1"=mat1, "mat2"=mat2, "corr"=corr))
+  }, ignoreNULL=F)
+  
+  
+  ### Plotting Functions
   plot_heatmap <- function() {
     distance <- get_dist()
     if(is.null(distance))
@@ -438,97 +475,81 @@ server <- function(input, output, session) {
   }
   
   
-  get_meta <- reactive({
-    meta1 <- input$meta1
-    meta2 <- input$meta2
+  plot_alignment = function(sample_label, default_color, use_legend=F) {
+    dimensions = refresh_dimensions()
+    validate(need(dimensions >= 3, paste(
+      "Must have dimensions \u22653 to plot, currently have", dimensions)))
+    validate(need(input$color_col != "", "Coloring column must be non-empty"))
     
-    # Load uploaded datasets
-    if (!is.null(meta1))
-      meta1 = read.csv(meta1$datapath, row.names=1)
-    if (!is.null(meta2))
-      meta2 = read.csv(meta2$datapath, row.names=1)
-    
-    # Load custom datasets
-    custom_dataset1 = get_custom_dataset(input$custom_mat1)
-    if (custom_dataset1 != "None")
-      meta1 = read.csv(paste(custom_dataset1, "meta.csv", sep=""), row.names=1)
-    custom_dataset2 = get_custom_dataset(input$custom_mat2)
-    if (custom_dataset2 != "None")
-      meta2 = read.csv(paste(custom_dataset2, "meta.csv", sep=""), row.names=1)
-    
-    data = get_data()
-    if(is.null(data))
+    # Get inputs
+    alignment <- perform_alignment()
+    if(is.null(alignment))
       return(NULL)
-    if( (dim(data$mat1)[1] == dim(meta1)[1]) && (dim(data$mat2)[1] == dim(meta2)[1]) )
-      return(list("meta1"=meta1, "meta2"=meta2))
-    showModal(modalDialog("Length of meta and data must match", footer=NULL, easyClose=T))
-    return(NULL)
-  })
-  
-  
-  get_data <- reactive({
-    mat1 <- input$mat1
-    mat2 <- input$mat2
-    corr <- input$corr
+    df2 = alignment$aligned
+    mat1 = alignment$mat1
+    mat2 = alignment$mat2
+    meta1 = alignment$meta1
+    meta2 = alignment$meta2
     
-    # Load uploaded datasets
-    if (!is.null(mat1))
-      mat1 <- as.matrix(read.csv(mat1$datapath, row.names=1))
-    if (!is.null(mat2))
-      mat2 <- as.matrix(read.csv(mat2$datapath, row.names=1))
-    
-    # Load custom datasets
-    custom_dataset1 = get_custom_dataset(input$custom_mat1)
-    if (custom_dataset1 != "None")
-      mat1 = read.csv(paste(custom_dataset1, "mat.csv", sep=""), row.names=1)
-    custom_dataset2 = get_custom_dataset(input$custom_mat2)
-    if (custom_dataset2 != "None")
-      mat2 = read.csv(paste(custom_dataset2, "mat.csv", sep=""), row.names=1)
-    
-    # Exception handling
-    if (is.null(mat1) || is.null(mat2)) {
-      removeModal()
-      showModal(modalDialog("No dataset uploaded", footer=NULL, easyClose=T))
+    # Plot code from paper
+    # Assumes ordering from NLMA
+    if (is.null(tryCatch({meta1[,input$color_col]; meta2[,input$color_col]},
+                         error=function(cond) {return(NULL)})))
       return(NULL)
+    df2$time = c(meta1[,input$color_col],meta2[,input$color_col])
+    res = data.frame(df2[df2$data==sample_label,])
+    res0 = data.frame(df2)
+    # Might want to clean these conditions eventually
+    clusters = get_clusters(df2, default_color, !input$show_clusters, length(unique(res$time)))
+    time.cols1 = clusters$colors
+    if (!input$show_clusters) {
+      par(mar=c(5.1,4.1,4.1,4.1), xpd=T)
+      time.cols1 = time.cols1[ as.numeric(mapvalues(res$time,unique(res$time),c(1:length(unique(res$time))))) ]
+      data = data.frame(x=res[,3], y=res[,4], z=res[,5], color=time.cols1, label=as.factor(res$time))
+      
+      legend_title = input$color_col
+    } else {
+      time.cols1 = time.cols1[df2$data==sample_label]
+      labels = paste("Cluster ", clusters$clusters[df2$data==sample_label], sep="")
+      data = data.frame(x=res[,3], y=res[,4], z=res[,5], color=time.cols1, label=labels)
+      legend_title = "Clusters"
     }
+    data = data[order(data$label), ]
     
-    # Make datasets compatible
-    if (dim(mat1)[2] != dim(mat2)[2]) {
-      col1 = colnames(mat1)
-      col2 = colnames(mat2)
-      genes_in_common = intersect(col1, col2)
-      
-      removeModal()
-      if (length(genes_in_common) < 1)
-        showModal(modalDialog(paste("Datasets do not have the same number of features,", dim(mat1)[2], "vs", dim(mat2)[2],
-                                    "\nFound", length(genes_in_common), "common genes and will cancel computation."),
-                              footer=NULL, easyClose=T))
-      else
-        showModal(modalDialog(paste("Datasets do not have the same number of features,", dim(mat1)[2], "vs", dim(mat2)[2],
-                                    "\nFound", length(genes_in_common), "common genes and will proceed as normal."),
-                              footer=NULL, easyClose=T))
-      
-      mat1 = mat1[,genes_in_common]
-      mat2 = mat2[,genes_in_common]
-    }
-      
-    # Calculate correspondence if not provided
-    if (!is.null(corr))
-      corr <- as.matrix(read.csv(corr$datapath, row.names=1))
-    else if (dim(mat1)[1] == dim(mat2)[1])
-      corr = diag(dim(mat1)[1])
-    else if (!input$use_boma) {
-      removeModal()
-      showModal(modalDialog("Correspondence matrix must be provided unless BOMA is used",
-                            footer=NULL, easyClose=T))
-      return(NULL)
-    } else
-      corr = NULL
+    if (sample_label == "brain")
+      title = "Brain"
+    else if (sample_label == "organoid")
+      title = "Organoid"
+    else
+      title = paste("Dataset", substr(sample_label, nchar(sample_label), nchar(sample_label)))
     
-    return(list("mat1"=mat1, "mat2"=mat2, "corr"=corr))
-  })
+    s3d = plot_ly(
+      type = "scatter3d",
+      mode = "markers",
+      data = data,
+      x = ~x, y = ~y, z = ~z,
+      marker = list(bgcolor="#e5e5e5", color=~color, line=list(width=1, color="black")),
+      split=~label
+    )
+    # https://stackoverflow.com/a/66117098 for continually rotating
+    s3d %>% layout(
+      title=title,
+      legend=list(title=list(text=legend_title)),
+      scene=list(
+        xaxis=list(range=c(min(res0$Val0), max(res0$Val0))),
+        yaxis=list(range=c(min(res0$Val1), max(res0$Val1))),
+        zaxis=list(range=c(min(res0$Val2), max(res0$Val2))),
+        aspectmode='cube',
+        camera=list(
+          eye = list(x=1.25, y=1.25, z=1.25),
+          up = list(x=0, y=0, z=1),
+          center = list(x=0, y=0, z=0)
+        )
+      ))
+  }
   
   
+  ### UI Functions
   refresh_dimensions <- reactive({
     # Change sliders based on selection
     method = get_method(input$method)
@@ -661,7 +682,8 @@ server <- function(input, output, session) {
   observeEvent(input$boma_method, conditional_boma_knn())
     
   
-  perform_alignment <- reactive({
+  ### Calculation Functions
+  perform_alignment <- eventReactive(input$run, {
     # https://stackoverflow.com/a/52741787
     data = get_data()
     if(is.null(data))
@@ -679,8 +701,10 @@ server <- function(input, output, session) {
     if(input$use_boma) {
       # Load metadata
       meta = get_meta()
-      if(is.null(meta))
+      if(is.null(meta)) {
+        removeModal()
         return(NULL)
+      }
       meta1 = meta$meta1
       meta2 = meta$meta2
       
@@ -728,7 +752,7 @@ server <- function(input, output, session) {
       # Local alignment
       aligned = ManiNetCluster(
         mat1,mat2,
-        nameX='sample1',nameY='sample2',
+        nameX='brain',nameY='organoid',
         corr=Correspondence(matrix=w),
         d=as.integer(input$d),
         method=method,
@@ -748,16 +772,14 @@ server <- function(input, output, session) {
         for (i in 1:length(order2)) {
           inv_order2[order2[i]] = i
         }
-        aligned[aligned$sample=="sample1",] = aligned[aligned$sample=="sample1",][inv_order1,]
-        aligned[aligned$sample=="sample2",] = aligned[aligned$sample=="sample2",][inv_order2,]
+        aligned[aligned$sample=="brain",] = aligned[aligned$sample=="brain",][inv_order1,]
+        aligned[aligned$sample=="organoid",] = aligned[aligned$sample=="organoid",][inv_order2,]
       }
-      
-      removeModal()
     } else {
       XY_corr = Correspondence(matrix=corr)
       aligned = ManiNetCluster(
         mat1,mat2,
-        nameX='sample1',nameY='sample2',
+        nameX='brain',nameY='organoid',
         corr=XY_corr,
         d=as.integer(input$d),
         method=method,
@@ -765,13 +787,39 @@ server <- function(input, output, session) {
         k_medoids=as.integer(3),
         k_medoids=as.integer(input$kmed)
       )
-      removeModal()
     }
     
-    return(aligned)
+    removeModal()
+    return(list(aligned=aligned, mat1=mat1, mat2=mat2, meta1=meta1, meta2=meta2, corr=data$corr, session=input$load))
+  }, ignoreNULL=F)
+  
+  
+  ### Plot Update Management
+  # asdf: Up for revision
+  update_value <- reactive({
+    # Observe all
+    for (i in input) {
+      i
+    }
+    # Changes iff plots should update
+    alignment = perform_alignment()
+    align_session = alignment$session
+    # Very small chance this glitches out, but worst case is blank plot
+    if (align_session == input$load) {
+      print("same")
+      # Could make this a ticker % 10
+      session_num <<- session_num + 1
+      return(session_num)
+    }
+    print("diff")
+    # Remain the same if not on the same dataset(s)
+    return(session_num)
   })
+  # observeEvent(input$color_col, update_value())
+  # observeEvent(input$boma_col, update_value())
   
   
+  ### Output Functions
   output$warnings <- renderText({
     mat1 <- input$mat1
     mat2 <- input$mat2
@@ -803,23 +851,22 @@ server <- function(input, output, session) {
   output$statistics <- renderPlot({
     # Accuracy metrics
     # Get inputs
-    data = get_data()
-    if(is.null(data))
+    # Get inputs
+    alignment <- perform_alignment()
+    if(is.null(alignment))
       return(NULL)
-    corr = data$corr
-    
-    meta = get_meta()
-    if(is.null(meta))
-      return(NULL)
-    meta1 = meta$meta1
-    meta2 = meta$meta2
+    aligned_data = alignment$aligned
+    mat1 = alignment$mat1
+    mat2 = alignment$mat2
+    meta1 = alignment$meta1
+    meta2 = alignment$meta2
+    corr = alignment$corr
     
     # Prerequisite data
-    aligned_data = perform_alignment()
     if(is.null(aligned_data))
       return(NULL)
-    source_data = data.frame(aligned_data[aligned_data$data=='sample1',])[,3:(2+input$d)]
-    transfer_data = data.frame(aligned_data[aligned_data$data=='sample2',])[,3:(2+input$d)]
+    source_data = data.frame(aligned_data[aligned_data$data=='brain',])[,3:(2+input$d)]
+    transfer_data = data.frame(aligned_data[aligned_data$data=='organoid',])[,3:(2+input$d)]
     
     # Iterate through labels
     labels = c()
@@ -883,10 +930,15 @@ server <- function(input, output, session) {
   })
   
   
-  output$content1 <- renderPlotly({plot_alignment('sample1', get_color_scheme(input$color_scheme)[1])})
-  output$content2 <- renderPlotly({plot_alignment('sample2', get_color_scheme(input$color_scheme)[2])})
-  output$heatmap <- renderPlot({plot_heatmap()})
-  output$colorbar <- renderPlot({plot_colorbar()})
+  plot_refresh <- reactive({list(input$color_col, input$color_scheme, input$num_clusters, input$cluster_method, input$show_clusters, input$run)})
+  content1 <- eventReactive(plot_refresh(), {plot_alignment('brain', get_color_scheme(input$color_scheme)[1])}, ignoreNULL=F)
+  output$content1 <- renderPlotly({content1()})
+  content2 <- eventReactive(plot_refresh(), {plot_alignment('organoid', get_color_scheme(input$color_scheme)[2])}, ignoreNULL=F)
+  output$content2 <- renderPlotly({content2()})
+  plHeatmap <- eventReactive(plot_refresh(), {plot_heatmap()}, ignoreNULL=F)
+  output$heatmap <- renderPlot({plHeatmap()})
+  colorbar <- eventReactive(plot_refresh(), {plot_colorbar()}, ignoreNULL=F)
+  output$colorbar <- renderPlot({colorbar()})
   
   
   output$download <- downloadHandler("aligned.csv", function(fname) {
