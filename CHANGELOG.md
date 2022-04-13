@@ -1,3 +1,9 @@
+# 1.5.5
+- Added more color options
+- Fixed small bug for statistics with action buttons
+- Styling changes
+- UI changes to correspond with figure
+
 # 1.5.4
 - Added a run button
 - Removed `boma` folder

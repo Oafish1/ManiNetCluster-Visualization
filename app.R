@@ -83,8 +83,8 @@ organoid_datasets = names(datasets)[c(1, 4, 5)]
 brain_default = names(datasets)[3]
 organoid_default = names(datasets)[5]
 
-plot_colors = c("Greens Oranges", "Spectral Spectral")
-names(plot_colors) = c("Green/Orange", "Spectral")
+plot_colors = c("Greens Oranges", "Spectral Spectral", "Set1 Set1")
+names(plot_colors) = c("Green/Orange", "Spectral", "Contrasting")
 plot_color_default = names(plot_colors)[1]
 
 # Other initial options
@@ -101,10 +101,10 @@ ui <- fluidPage(
   
   # Main plot
   useShinyjs(),
-  h2("Brain Organoid Manifold Alignment"),
+  h2("Brain Organoid Manifold Alignment (BOMA)"),
   # textOutput("warnings"),
   fluidRow(
-    column(4, img(src='figure1.png', align = "left", width="100%")),
+    column(4, img(src='figure1.png', align="center", width="100%", height="100%")),
     column(4, plotlyOutput("content1")),
     column(4, plotlyOutput("content2")),
   ),
@@ -113,10 +113,18 @@ ui <- fluidPage(
   # UI
   fluidRow(
     column(4,
-      h2("Upload"),
-      strong("Row and column labels are expected in all files.  All files are
-        also assumed to be ordered similarly (by sample).  Default datasets and source code can be
-        found", a("here", href="https://github.com/Oafish1/ManiNetCluster-Visualization/tree/main/data")),
+      h2("A. Upload"),
+      fluidRow(
+        column(9,
+          strong(HTML(paste("Row and column labels are expected in all files.  All files are
+                 also assumed to be ordered similarly (by sample).  Default datasets and source code can be
+                 found ", a("here", href="https://github.com/Oafish1/ManiNetCluster-Visualization/tree/main/data"), ".", sep=""))),
+        ),
+        column(3,
+          actionButton("load", "Load Data", icon("upload"), style="color: #fff; background-color: #509ecc; border-color: #308fc7"),
+        ),
+      ),
+      
       
       hr(),
       fluidRow(
@@ -163,72 +171,75 @@ ui <- fluidPage(
       ),
     ),
     column(4,
-      h2("Alignment"),
-      
-      fluidRow(
-        column(3,
-          checkboxInput("use_boma", "Use BOMA", value=T),
-        ),
-        column(3,
-          actionButton("load", "Load Data"),
-        ),
-        column(3,
-          actionButton("run", "Calculate"),
-        ),
-        column(3,
-          downloadButton("download", "Download"),
-        ),
-      ),
-      em("Download data as a single CSV using the chosen parameters.  Includes a column indicating",
-         "the dataset, columns for the number of dimensions selected, and a single column indicating",
-         "cluster.  A column indicating module type is also included; more details can be found",
-         a("here", href="https://github.com/namtk/ManiNetCluster")),
-      
-      hr(),
       fluidRow(
         column(6,
-               selectInput("boma_method", "Global Alignment", choices=names(boma_alignments), selected=boma_global_method_default),
-               sliderInput("boma_knn", "Nearest Neighbors", min = 2, max = 20, value = 5),
+          h2("B. Global Alignment"),
         ),
         column(6,
-               selectInput("boma_col", "Sample Ordering", choices=c(initial_boma_col), selected=initial_boma_col),
+          h2("C. Local Alignment"),
+        ),
+      ),
+      
+      em("Global alignment is responsible for generating a correspondence matrix between the two input datasets.  This correspondence",
+        "will then be used alongside the original data for local alignment, placing the datasets on similarly aligned manifolds."),
+      hr(),
+      
+      fluidRow(
+        column(6,
+          selectInput("boma_method", "Correspondence Method", choices=names(boma_alignments), selected=boma_global_method_default),
+          selectInput("boma_col", "Sample Ordering", choices=c(initial_boma_col), selected=initial_boma_col),
+          sliderInput("boma_knn", "Nearest Neighbors", min = 2, max = 20, value = 5),
+          hr(),
+          fluidRow(
+            column(6,
+                   checkboxInput("use_boma", "Use BOMA", value=T),
+            ),
+            column(6,
+                   actionButton("run", "Run Alignment", icon("play"), style="color: #fff; background-color: #509ecc; border-color: #308fc7"),
+            ),
+          ),
+        ),
+        column(6,
+          selectInput("method", "Alignment Method", choices=names(alignments), selected="Non-Linear Manifold Alignment"),
+          sliderInput("d", "Dimensions", min = 1, max = 20, value = 3),
+          sliderInput("knn", "Nearest Neighbors", min = 2, max = 20, value = 3),
+          sliderInput("kmed", "Medoids", min = 2, max = 20, value = 6),
         ),
       ),
       
       hr(),
-      selectInput("method", "Local Alignment", choices=names(alignments), selected="Non-Linear Manifold Alignment"),
-      fluidRow(
-        column(4,
-               sliderInput("d", "Dimensions", min = 1, max = 20, value = 3)),
-        column(4,
-               sliderInput("knn", "Nearest Neighbors", min = 2, max = 20, value = 3), ),
-        column(4,
-               sliderInput("kmed", "Medoids", min = 2, max = 20, value = 6),),
-      ),
-      plotOutput("statistics", height=200),
-      em("Zero values are assumed to be errant and are excluded. ",
-         "Labels are extracted from columns present in both metadata files. "),
-    ),
-    
-    column(4,
-      h2("Clustering"),
+      h2("D. Clustering"),
       checkboxInput("show_clusters", "Show Clusters in Plot", value=F),
       fluidRow(
         column(6,
-          selectInput("color_col", "Coloring Feature", choices=c(initial_color_col), selected=initial_color_col),
-          selectInput("color_scheme", "Color Scheme", choices=names(plot_colors), selected=plot_color_default),
+               selectInput("color_col", "Coloring Feature", choices=c(initial_color_col), selected=initial_color_col),
+               selectInput("color_scheme", "Color Scheme", choices=names(plot_colors), selected=plot_color_default),
         ),
         column(6,
-          selectInput("cluster_method", "Clustering Method", choices=c("K-Means", "PAM"), selected="PAM"),
-          sliderInput("num_clusters", "Clusters", min = 1, max = 14, value = 4),
+               selectInput("cluster_method", "Clustering Method", choices=c("K-Means", "PAM"), selected="PAM"),
+               sliderInput("num_clusters", "Clusters", min = 1, max = 14, value = 4),
         ),
       ),
-      
-      hr(),
+    ),
+    
+    column(4,
+      h2("Evaluation"),
       fluidRow(
         column(9, plotOutput("heatmap")),
         column(3, plotOutput("colorbar")),
       ),
+      
+      hr(),
+      plotOutput("statistics", height=200),
+      em("Zero values are assumed to be errant and are excluded. ",
+         "Labels are extracted from columns present in both metadata files. "),
+      
+      hr(),
+      downloadButton("download", "Download"),
+      em(HTML(paste("Download data as a single CSV using the chosen parameters.  Includes a column indicating ",
+         "the dataset, columns for the number of dimensions selected, and a single column indicating ",
+         "cluster.  A column indicating module type is also included; more details can be found ",
+         a("here", href="https://github.com/namtk/ManiNetCluster"), ".", sep=""))),
     ),
   ),
 )
@@ -865,8 +876,8 @@ server <- function(input, output, session) {
     # Prerequisite data
     if(is.null(aligned_data))
       return(NULL)
-    source_data = data.frame(aligned_data[aligned_data$data=='brain',])[,3:(2+input$d)]
-    transfer_data = data.frame(aligned_data[aligned_data$data=='organoid',])[,3:(2+input$d)]
+    source_data = data.frame(aligned_data[aligned_data$data=='brain',])[,3:dim(aligned_data)[2]]
+    transfer_data = data.frame(aligned_data[aligned_data$data=='organoid',])[,3:dim(aligned_data)[2]]
     
     # Iterate through labels
     labels = c()
