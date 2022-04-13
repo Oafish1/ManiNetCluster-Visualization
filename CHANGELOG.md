@@ -1,3 +1,6 @@
+# 1.5.6
+- Small formatting fixes/tweaks
+
 # 1.5.5
 - Added more color options
 - Fixed small bug for statistics with action buttons

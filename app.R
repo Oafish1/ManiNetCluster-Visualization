@@ -105,8 +105,8 @@ ui <- fluidPage(
   # textOutput("warnings"),
   fluidRow(
     column(4, img(src='figure1.png', align="center", width="100%", height="100%")),
-    column(4, plotlyOutput("content1")),
-    column(4, plotlyOutput("content2")),
+    column(4, plotlyOutput("content1", width="100%", height="100%")),
+    column(4, plotlyOutput("content2", width="100%", height="100%")),
   ),
   hr(),
   
@@ -230,9 +230,10 @@ ui <- fluidPage(
       ),
       
       hr(),
-      plotOutput("statistics", height=200),
-      em("Zero values are assumed to be errant and are excluded. ",
-         "Labels are extracted from columns present in both metadata files. "),
+      plotOutput("statistics", height=300),
+      em("LTA refers to label transfer accuracy, which measures the accurracy of a KNN classifier trained on one
+          dataset and evaluated on the other.  Statistics with a value of zero are assumed to be errant and are excluded. 
+          Labels are extracted from columns present in both metadata files."),
       
       hr(),
       downloadButton("download", "Download"),
@@ -673,7 +674,7 @@ server <- function(input, output, session) {
     if (input$use_boma) {
       shinyjs::enable(id="boma_method")
       shinyjs::enable(id="boma_col")
-      if (input$boma_method %in% c("knn"))
+      if (get_boma_method(input$boma_method) %in% c("knn"))
         shinyjs::enable(id="boma_knn")
     }
     else {
@@ -897,7 +898,7 @@ server <- function(input, output, session) {
       correct = sum(predictions == transfer_labels)
       cname_acc = (correct / length(transfer_labels))
       if (cname_acc != 0) {
-        labels = append(labels, paste("Label Transfer Acc.\n", cname))
+        labels = append(labels, paste("LTA: ", cname))
         acc = append(acc, cname_acc)
       }
       
