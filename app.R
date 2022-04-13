@@ -201,7 +201,7 @@ ui <- fluidPage(
         ),
         column(6,
           selectInput("method", "Alignment Method", choices=names(alignments), selected="Non-Linear Manifold Alignment"),
-          sliderInput("d", "Dimensions", min = 1, max = 20, value = 3),
+          sliderInput("d", "Dimensions", min = 2, max = 20, value = 3),
           sliderInput("knn", "Nearest Neighbors", min = 2, max = 20, value = 3),
           sliderInput("kmed", "Medoids", min = 2, max = 20, value = 6),
         ),
@@ -489,11 +489,6 @@ server <- function(input, output, session) {
   
   
   plot_alignment = function(sample_label, default_color, use_legend=F) {
-    dimensions = refresh_dimensions()
-    validate(need(dimensions >= 3, paste(
-      "Must have dimensions \u22653 to plot, currently have", dimensions)))
-    validate(need(input$color_col != "", "Coloring column must be non-empty"))
-    
     # Get inputs
     alignment <- perform_alignment()
     if(is.null(alignment))
@@ -503,6 +498,11 @@ server <- function(input, output, session) {
     mat2 = alignment$mat2
     meta1 = alignment$meta1
     meta2 = alignment$meta2
+    
+    dimensions = dim(df2)[2] - 2
+    validate(need(dimensions >= 3, paste(
+      "Must have dimensions \u22653 to plot, currently have", dimensions)))
+    validate(need(input$color_col != "", "Coloring column must be non-empty"))
     
     # Plot code from paper
     # Assumes ordering from NLMA
@@ -956,9 +956,11 @@ server <- function(input, output, session) {
   
   
   output$download <- downloadHandler("aligned.csv", function(fname) {
-      aligned = perform_alignment()
+      aligned = perform_alignment()$aligned
       aligned = cbind(aligned, cluster=get_clusters(aligned)$clusters)
       write.csv(aligned, fname)
+      removeModal()
+      showModal(modalDialog("Successfully wrote file.", footer=NULL, easyClose=T))
     }, "text/csv")
   # traceback()
 }

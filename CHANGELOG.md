@@ -1,3 +1,7 @@
+# 1.5.8
+- Fix low dim visualization plotting bug
+- Update download function
+
 # 1.5.7
 - `eventReactive` bugfix on `get_data` that caused crashing when no correspondence matrix was uploaded and `use_boma` flag was false
 - Fix error on modifying clustering after changing dimension by removing dependence on `input$d`
