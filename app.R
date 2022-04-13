@@ -277,7 +277,7 @@ server <- function(input, output, session) {
   
   get_clusters <- function(df, default_color="green", normal_colors=F, num_colors=8) {
     # Generate clusters / Get colors
-    working_data = df[,3:(2+input$d)]
+    working_data = df[,3:dim(df)[2]]
     # Max 7 colors
     colors = c("blue","green","yellow","orange","red","pink","purple")
     
@@ -288,8 +288,8 @@ server <- function(input, output, session) {
     else if (input$cluster_method == "PAM")
       clusters = pam(working_data, input$num_clusters)$clustering
     else if (input$cluster_method == "Spectral") {
-      s1 <- as.matrix(data.frame(df[df$data=="brain",])[,3:(2+input$d)])
-      s2 <- as.matrix(data.frame(df[df$data=="organoid",])[,3:(2+input$d)])
+      s1 <- as.matrix(data.frame(df[df$data=="brain",])[,3:dim(df)[2]])
+      s2 <- as.matrix(data.frame(df[df$data=="organoid",])[,3:dim(df)[2]])
       dist = as.matrix(pdist::pdist(s1, s2))
     }
     else
@@ -341,8 +341,8 @@ server <- function(input, output, session) {
     clusters$clusters = clusters$clusters[sort(clusters$clusters, index.return=T)$ix]
     clusters = clusters[sort(clusters$clusters, index.return=T)$ix]
     
-    s1 <- as.matrix(data.frame(aligned[aligned$data=="brain",])[,3:(2+input$d)])
-    s2 <- as.matrix(data.frame(aligned[aligned$data=="organoid",])[,3:(2+input$d)])
+    s1 <- as.matrix(data.frame(aligned[aligned$data=="brain",])[,3:dim(aligned)[2]])
+    s2 <- as.matrix(data.frame(aligned[aligned$data=="organoid",])[,3:dim(aligned)[2]])
     rsc = clusters$colors[aligned$data=="brain"]
     csc = clusters$colors[aligned$data=="organoid"]
     
@@ -382,7 +382,7 @@ server <- function(input, output, session) {
   }, ignoreNULL=F)
   
   
-  get_data <- eventReactive(input$load, {
+  get_data <- eventReactive(list(input$load, input$use_boma), {
     mat1 <- input$mat1
     mat2 <- input$mat2
     corr <- input$corr
@@ -404,7 +404,7 @@ server <- function(input, output, session) {
     # Exception handling
     if (is.null(mat1) || is.null(mat2)) {
       removeModal()
-      showModal(modalDialog("No dataset uploaded", footer=NULL, easyClose=T))
+      showModal(modalDialog("No datasets provided", footer=NULL, easyClose=T))
       return(NULL)
     }
     
@@ -431,12 +431,13 @@ server <- function(input, output, session) {
     # Calculate correspondence if not provided
     if (!is.null(corr))
       corr <- as.matrix(read.csv(corr$datapath, row.names=1))
-    else if (dim(mat1)[1] == dim(mat2)[1])
-      corr = diag(dim(mat1)[1])
+    # else if (dim(mat1)[1] == dim(mat2)[1])
+    #   corr = diag(dim(mat1)[1])
     else if (!input$use_boma) {
       removeModal()
       showModal(modalDialog("Correspondence matrix must be provided unless BOMA is used",
                             footer=NULL, easyClose=T))
+      
       return(NULL)
     } else
       corr = NULL
@@ -583,6 +584,7 @@ server <- function(input, output, session) {
     for (id in to_show)
       shinyjs::enable(id=id)
     if (input$knn == 0 && "knn" %in% to_show) {
+      # Doesn't happen anymore.  If ever enable knn = 0 again, this would need revisiting
       shinyjs::enable(id="kmed")
       shinyjs::disable(id="d")
       dimensions = input$kmed
