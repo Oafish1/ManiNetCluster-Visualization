@@ -1,3 +1,7 @@
+# 1.5.9
+- Add pseudocell popup instructions
+- Additional notation on optional, required uploads
+
 # 1.5.8
 - Fix low dim visualization plotting bug
 - Update download function
