@@ -1,3 +1,6 @@
+# 1.5.10
+- Fix `Pseudocell Help` popup not popping up on second+ activation
+
 # 1.5.9
 - Add pseudocell popup instructions
 - Additional notation on optional, required uploads

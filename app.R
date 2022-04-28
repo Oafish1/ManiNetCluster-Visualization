@@ -754,6 +754,8 @@ server <- function(input, output, session) {
   pcell_popup <- reactive({
     removeModal()
     showModal(modalDialog(HTML(pseudocell_string), footer=NULL, easyClose=T))
+    # Run always, trick reactive
+    return (input$pcell_help)
   })
   observeEvent(input$pcell_help, pcell_popup())
   
