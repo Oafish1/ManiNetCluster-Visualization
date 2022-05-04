@@ -95,58 +95,11 @@ initial_color_col = "time"
 options(shiny.maxRequestSize=0)
 
 # Default strings
-pseudocell_string = gsub("\t", "&emsp;", gsub("\n", "<br>", "<h3>To create Pseudocells from multiple GEX datasets...</h3>
-<b>Filter the datasets and generate clusters</b>
-For each dataset:
-	Generate a Seurat object
-	<code>obj <- CreateSeuratObject(~)</code>
-
-	Normalize the data and perform PCA on most variable features
-	<code>obj <- FindVariableFeatures(obj, nfeatures=6000)</code>
-	<code>obj <- ScaleData(obj, features=row.names(obj))</code>
-	<code>obj <- RunPCA(obj, features = VariableFeatures(object=obj))</code>
-
-	Compute the KNN and cluster
-	<code>obj <- FindNeighbors(obj, dims=1:10)</code>
-	<code>obj <- FindClusters(obj, resolution=0.5)</code>
-
-	Scale the counts and produce the final output
-	<code>obj <- RelativeCounts(data=obj[['RNA']]@data, scale.factor=1e6)</code>
-	<code>output_data <- input_data[row.names(input_data) %in% VariableFeatures(obj),]</code>
-	<code>output_meta <- input_meta[row.names(input_meta) %in% colnames(output_data),]</code>
-	<code>output_meta$seurat_clusters = obj@meta.data$seurat_clusters</code>
-
-
-<b>Combine the datasets</b>
-<code>gex <- cbind(~)</code>
-<code>meta <- cbind(~)</code>
-
-
-<b>Generate the pseudocells</b>
-Perform hierarchical clustering on PCA data or use existing <i>time</i> metadata
-<code># Use automatic</code>
-<code>n = dim(gex)[1]</code>
-<code>pca.res = prcomp(gex)</code>
-<code>pcs = gex %*% pca.res$rotation</code>
-<code>tpc = pcs[, 1:20]</code>
-<code>d = rdist(tpc, metric=\"euclidean\")</code>
-<code>psm = cutree(hclust(d),k=min(floor(.2 * n), n))</code>
-<code># Average the expression of each cluster</code>
-<code>avg.gex = matrix(0, nrow=length(unique(psm)), ncol=dim(gex)[2])</code>
-<code>for (id in unique(psm)) {avg.gex[id,] = colMeans(gex[psm==id,])}</code>
-<code>return avg.gex</code>
-
-<code># Use time</code>
-<code>for (time in unique(meta$time)) {</code>
-<code>	for (clust in unique(meta$seurat_clusters)) {</code>
-<code>		# Find and assign average gex[in time/clust,] to avg.gex</code>
-<code>		# Record tag, clust to avg.meta</code>
-<code>	}</code>
-<code>}</code>
-<code>return List(avg.gex, avg.meta)</code>"))
+pseudocell_string = gsub("\t", "&emsp;", gsub("\n", "<br>", "Pseudocell instructions can be found <a href=\"https://github.com/Oafish1/ManiNetCluster-Visualization/blob/main/pseudocells.R\">here</a>."))
 
 # UI
 ui <- fluidPage(
+  tags$head(tags$style(".rightAlign{float:right;}")),
   # Meta
   title="BOMA App",
   
@@ -166,13 +119,13 @@ ui <- fluidPage(
     column(4,
       h2("A. Upload"),
       fluidRow(
-        column(9,
+        column(6,
           strong(HTML(paste("Row and column labels are expected in all files.  All files are
                  also assumed to be ordered similarly (by sample).  Default datasets and source code can be
                  found ", a("here", href="https://github.com/Oafish1/ManiNetCluster-Visualization/tree/main/data"), ".", sep=""))),
         ),
-        column(3,
-          actionButton("load", "Load Data", icon("upload"), style="color: #fff; background-color: #509ecc; border-color: #308fc7"),
+        column(6,
+          actionButton("load", "Load Data", icon("upload"), style="color: #fff; background-color: #509ecc; border-color: #308fc7", class="rightAlign"),
         ),
       ),
       
@@ -210,8 +163,8 @@ ui <- fluidPage(
       
       hr(),
       fluidRow(
-        column(9, fileInput("corr", NULL, buttonLabel="Correspondence (Optional)", multiple=FALSE)), 
-        column(3, actionButton("pcell_help", "Pseudocell Help", icon("question"), style="color: #fff; background-color: #B07e8c; border-color: #906e7c"),)
+        column(6, fileInput("corr", NULL, buttonLabel="Correspondence (Optional)", multiple=FALSE)), 
+        column(6, actionButton("pcell_help", "Pseudocell Help", icon("question"), style="color: #fff; background-color: #B07e8c; border-color: #906e7c", class="rightAlign"),)
       ),
       div(style = "margin-top: -20px"),
       fluidRow(
