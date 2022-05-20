@@ -224,7 +224,7 @@ ui <- fluidPage(
         ),
         column(6,
                selectInput("cluster_method", "Clustering Method", choices=c("K-Means", "PAM"), selected="PAM"),
-               sliderInput("num_clusters", "Clusters", min = 1, max = 14, value = 4),
+               sliderInput("num_clusters", "Clusters", min = 1, max = 7, value = 4),
         ),
       ),
     ),
@@ -284,7 +284,7 @@ server <- function(input, output, session) {
   
   get_clusters <- function(df, default_color="green", normal_colors=F, num_colors=8) {
     # Generate clusters / Get colors
-    working_data = df[,3:dim(df)[2]]
+    working_data = df[,3:(3+input$d-1)]
     # Max 7 colors
     colors = c("blue","green","yellow","orange","red","pink","purple")
     
@@ -302,22 +302,6 @@ server <- function(input, output, session) {
     else
       validate(need(F, "Invalid clustering method"))
     return (list("clusters"=clusters, "colors"=colors[clusters]))
-  }
-  
-  
-  get_raw_clusters <- function(df) {
-    # Generate clusters / Get colors
-    working_data = df
-    # Max 7 colors
-    colors = c("blue","green","yellow","orange","red","pink","purple")
-    
-    if (input$cluster_method == "K-Means")
-      clusters = kmeans(working_data, input$num_clusters)$cluster
-    else if (input$cluster_method == "PAM")
-      clusters = pam(working_data, input$num_clusters)$clustering
-    else
-      validate(need(F, "Invalid clustering method"))
-    return (clusters)
   }
   
   

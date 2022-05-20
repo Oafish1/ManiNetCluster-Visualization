@@ -1,3 +1,11 @@
+# 1.5.12
+- Bugfix for plot cluster coloring
+- More appropriate cluster bounding given color scheme
+
+# 1.5.11
+- Fix button alignment
+- Add `pseudocells.R` informational file
+
 # 1.5.10
 - Fix `Pseudocell Help` popup not popping up on second+ activation
 
